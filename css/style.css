@@ -1,5 +1,7 @@
 :root {
   /* Logo wordmark + palette */
+  --brand-logo-blue: #2563eb;
+  --brand-logo-blue-dark: #1d4ed8;
   --brand-teal: #70c5ce;
   --primary: #70c5ce;
   --primary-rgb: 112, 197, 206;
@@ -148,8 +150,21 @@ main {
 .brand-name {
   font-size: clamp(0.95rem, 0.85rem + 0.45vw, 1.35rem);
   line-height: 1.15;
-  letter-spacing: -0.01em;
-  color: var(--dark);
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  color: var(--brand-logo-blue);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #0ea5e9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand:hover .brand-name,
+.brand:focus-visible .brand-name {
+  background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 50%, #0284c7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .brand-logo-img {

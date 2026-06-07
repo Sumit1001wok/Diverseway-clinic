@@ -12,10 +12,15 @@ require("./db");
 
 const apiRoutes = require("./routes/api");
 const adminRoutes = require("./routes/admin");
+const { productionMiddleware } = require("./middleware/production");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 const rootDir = path.join(__dirname, "..");
+const isProduction = process.env.NODE_ENV === "production";
+
+productionMiddleware(app);
 
 app.use(
   helmet({
@@ -33,19 +38,34 @@ const formLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(rootDir, "index.html"));
+});
+
 app.use("/api", formLimiter, apiRoutes);
 app.use("/api/admin", adminRoutes);
 
-app.use(express.static(rootDir));
+app.use(express.static(rootDir, { index: false }));
 
 app.get("/admin", (_req, res) => {
   res.sendFile(path.join(rootDir, "admin", "index.html"));
 });
 
-app.use((_req, res) => {
-  res.status(404).sendFile(path.join(rootDir, "index.html"));
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || path.extname(req.path)) {
+    return next();
+  }
+  res.sendFile(path.join(rootDir, "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`Diverse Way Clinic running at http://localhost:${PORT}`);
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+app.listen(PORT, HOST, () => {
+  const siteUrl = process.env.SITE_URL || `http://localhost:${PORT}`;
+  console.log(`Diverse Way Clinic running at ${siteUrl}`);
+  if (!isProduction) {
+    console.log(`Local: http://localhost:${PORT}`);
+  }
 });

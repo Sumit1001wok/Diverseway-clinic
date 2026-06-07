@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const dataDir = path.join(__dirname, "..", "data");
+const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
 const bookingsPath = path.join(dataDir, "bookings.json");
 const messagesPath = path.join(dataDir, "messages.json");
 
