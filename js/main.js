@@ -3,6 +3,32 @@
 // WhatsApp direct messages: +977 9845366417 → use "9779845366417" in wa.me (no +). Same in all HTML wa.me links.
 const WHATSAPP_PHONE = "9779845366417";
 
+async function postJson(url, payload) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.error || "Something went wrong. Please try again.");
+  }
+
+  return data;
+}
+
+function setFormFeedback(errorEl, successEl, { error = "", success = "" } = {}) {
+  if (errorEl) {
+    errorEl.textContent = error;
+  }
+  if (successEl) {
+    successEl.textContent = success;
+    successEl.hidden = !success;
+  }
+}
+
 const siteHeader = document.querySelector(".site-header");
 const menuToggle = document.querySelector(".menu-toggle");
 
@@ -273,9 +299,10 @@ if (!document.querySelector(".wa-float")) {
   document.body.appendChild(waFloat);
 }
 
-// Booking page: build WhatsApp message (no backend form)
-const bookingButton = document.getElementById("bk-whatsapp");
-if (bookingButton) {
+// Booking page: submit to API + optional WhatsApp
+const bookingButton = document.getElementById("bk-submit");
+const bookingWhatsAppButton = document.getElementById("bk-whatsapp");
+if (bookingButton || bookingWhatsAppButton) {
   const nameInput = document.getElementById("bk-name");
   const phoneInput = document.getElementById("bk-phone");
   const serviceInput = document.getElementById("bk-service");
@@ -283,69 +310,164 @@ if (bookingButton) {
   const timeInput = document.getElementById("bk-time");
   const messageInput = document.getElementById("bk-message");
   const errorEl = document.getElementById("bk-error");
+  const successEl = document.getElementById("bk-success");
 
-  function setError(message) {
-    if (errorEl) {
-      errorEl.textContent = message;
-    }
+  function getBookingFields() {
+    return {
+      name: (nameInput?.value || "").trim(),
+      phone: (phoneInput?.value || "").trim(),
+      service: (serviceInput?.value || "").trim(),
+      preferred_date: (dateInput?.value || "").trim(),
+      preferred_time: (timeInput?.value || "").trim(),
+      message: (messageInput?.value || "").trim(),
+    };
   }
 
-  bookingButton.addEventListener("click", () => {
-    const name = (nameInput?.value || "").trim();
-    const phone = (phoneInput?.value || "").trim();
-    const service = (serviceInput?.value || "").trim();
-    const date = (dateInput?.value || "").trim();
-    const time = (timeInput?.value || "").trim();
-    const extra = (messageInput?.value || "").trim();
-
-    if (!name || !phone || !service) {
-      setError("Please fill in your name, phone number, and service before booking.");
-      return;
+  function validateBooking(fields) {
+    if (!fields.name || !fields.phone || !fields.service) {
+      setFormFeedback(errorEl, successEl, {
+        error: "Please fill in your name, phone number, and service before booking.",
+      });
+      return false;
     }
+    setFormFeedback(errorEl, successEl);
+    return true;
+  }
 
-    setError("");
-
+  function openBookingWhatsApp(fields) {
     const lines = [
       "Hello Diverse Way Clinic! I'd like to book an appointment.",
-      `Name: ${name}`,
-      `Phone: ${phone}`,
-      `Service: ${service}`,
-      `Date: ${date || "Not specified"}`,
-      `Time: ${time || "Not specified"}`,
-      `Message: ${extra || "—"}`,
+      `Name: ${fields.name}`,
+      `Phone: ${fields.phone}`,
+      `Service: ${fields.service}`,
+      `Date: ${fields.preferred_date || "Not specified"}`,
+      `Time: ${fields.preferred_time || "Not specified"}`,
+      `Message: ${fields.message || "—"}`,
     ];
-
-    const text = encodeURIComponent(lines.join("\n"));
-    const url = `https://wa.me/${WHATSAPP_PHONE}?text=${text}`;
+    const url = `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
     window.open(url, "_blank", "noopener,noreferrer");
-  });
+  }
+
+  if (bookingButton) {
+    bookingButton.addEventListener("click", async () => {
+      const fields = getBookingFields();
+      if (!validateBooking(fields)) {
+        return;
+      }
+
+      bookingButton.disabled = true;
+      bookingButton.textContent = "Submitting…";
+
+      try {
+        const data = await postJson("/api/booking", fields);
+        setFormFeedback(errorEl, successEl, { success: data.message });
+        nameInput.value = "";
+        phoneInput.value = "";
+        if (serviceInput) serviceInput.selectedIndex = 0;
+        if (dateInput) dateInput.value = "";
+        if (timeInput) timeInput.value = "";
+        if (messageInput) messageInput.value = "";
+      } catch (err) {
+        setFormFeedback(errorEl, successEl, { error: err.message });
+      } finally {
+        bookingButton.disabled = false;
+        bookingButton.textContent = "Submit booking request";
+      }
+    });
+  }
+
+  if (bookingWhatsAppButton) {
+    bookingWhatsAppButton.addEventListener("click", () => {
+      const fields = getBookingFields();
+      if (!validateBooking(fields)) {
+        return;
+      }
+      openBookingWhatsApp(fields);
+    });
+  }
 }
 
-// Contact page: send message via WhatsApp (no backend form)
-const contactButton = document.getElementById("ct-whatsapp");
-if (contactButton) {
+// Contact page: submit to API + optional WhatsApp
+const contactButton = document.getElementById("ct-submit");
+const contactWhatsAppButton = document.getElementById("ct-whatsapp");
+if (contactButton || contactWhatsAppButton) {
+  const nameInput = document.getElementById("ct-name");
+  const emailInput = document.getElementById("ct-email");
   const subjectInput = document.getElementById("ct-subject");
   const messageInput = document.getElementById("ct-message");
   const errorEl = document.getElementById("ct-error");
+  const successEl = document.getElementById("ct-success");
 
-  function setError(message) {
-    if (errorEl) {
-      errorEl.textContent = message;
-    }
+  function getContactFields() {
+    return {
+      name: (nameInput?.value || "").trim(),
+      email: (emailInput?.value || "").trim(),
+      subject: (subjectInput?.value || "").trim(),
+      message: (messageInput?.value || "").trim(),
+    };
   }
 
-  contactButton.addEventListener("click", () => {
-    const subject = (subjectInput?.value || "").trim();
-    const message = (messageInput?.value || "").trim();
-
-    if (!subject || !message) {
-      setError("Please enter a subject and message before sending.");
-      return;
+  function validateContact(fields, requireAll = false) {
+    if (requireAll && (!fields.name || !fields.email)) {
+      setFormFeedback(errorEl, successEl, {
+        error: "Please enter your name and email before sending.",
+      });
+      return false;
     }
 
-    setError("");
-    const text = encodeURIComponent(`Subject: ${subject}\nMessage: ${message}`);
-    const url = `https://wa.me/${WHATSAPP_PHONE}?text=${text}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  });
+    if (!fields.subject || !fields.message) {
+      setFormFeedback(errorEl, successEl, {
+        error: "Please enter a subject and message before sending.",
+      });
+      return false;
+    }
+
+    setFormFeedback(errorEl, successEl);
+    return true;
+  }
+
+  if (contactButton) {
+    contactButton.addEventListener("click", async () => {
+      const fields = getContactFields();
+      if (!validateContact(fields, true)) {
+        return;
+      }
+
+      contactButton.disabled = true;
+      contactButton.textContent = "Sending…";
+
+      try {
+        const data = await postJson("/api/contact", fields);
+        setFormFeedback(errorEl, successEl, { success: data.message });
+        if (nameInput) nameInput.value = "";
+        if (emailInput) emailInput.value = "";
+        if (subjectInput) subjectInput.value = "";
+        if (messageInput) messageInput.value = "";
+      } catch (err) {
+        setFormFeedback(errorEl, successEl, { error: err.message });
+      } finally {
+        contactButton.disabled = false;
+        contactButton.textContent = "Send message";
+      }
+    });
+  }
+
+  if (contactWhatsAppButton) {
+    contactWhatsAppButton.addEventListener("click", () => {
+      const fields = getContactFields();
+      if (!validateContact(fields)) {
+        return;
+      }
+
+      const lines = [
+        fields.name ? `Name: ${fields.name}` : null,
+        fields.email ? `Email: ${fields.email}` : null,
+        `Subject: ${fields.subject}`,
+        `Message: ${fields.message}`,
+      ].filter(Boolean);
+
+      const url = `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+  }
 }
