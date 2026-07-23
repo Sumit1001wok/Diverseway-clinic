@@ -1524,6 +1524,38 @@ main {
     var(--white);
 }
 
+.seo-intro {
+  background: var(--white);
+  padding-top: 3.5rem;
+}
+
+.seo-intro-inner {
+  max-width: 820px;
+}
+
+.seo-intro-inner .section-lede {
+  margin-bottom: 1.25rem;
+}
+
+.seo-intro-grid {
+  display: grid;
+  gap: 1rem;
+  color: #4a5068;
+  font-size: 1.02rem;
+  line-height: 1.65;
+}
+
+.seo-intro-grid a {
+  color: var(--primary-dark);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.seo-intro-grid strong {
+  color: var(--dark);
+}
+
 .home-blog-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

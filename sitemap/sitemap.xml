@@ -2,67 +2,74 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://www.diversewayclinic.com/</loc>
-    <lastmod>2026-05-08T11:08:44+00:00</lastmod>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://www.diversewayclinic.com/index.html</loc>
-    <lastmod>2026-05-08T11:08:45+00:00</lastmod>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://www.diversewayclinic.com/services.html</loc>
-    <lastmod>2026-05-08T11:08:45+00:00</lastmod>
-    <priority>0.8</priority>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/about.html</loc>
-    <lastmod>2026-05-08T11:08:45+00:00</lastmod>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/contact.html</loc>
-    <lastmod>2026-05-08T11:08:45+00:00</lastmod>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/booking.html</loc>
-    <lastmod>2026-05-31T00:00:00+00:00</lastmod>
-    <priority>0.8</priority>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog.html</loc>
-    <lastmod>2026-05-31T00:00:00+00:00</lastmod>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog/understanding-speech-delays.html</loc>
-    <lastmod>2026-05-12T00:00:00+00:00</lastmod>
-    <priority>0.7</priority>
+    <lastmod>2026-07-23T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog/play-based-therapy.html</loc>
     <lastmod>2026-05-20T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog/fine-motor-activities-home.html</loc>
     <lastmod>2026-05-08T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog/when-to-seek-counselling.html</loc>
     <lastmod>2026-05-31T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog/voice-therapy-kathmandu.html</loc>
     <lastmod>2026-05-31T00:00:00+00:00</lastmod>
-    <priority>0.7</priority>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
   </url>
   <url>
     <loc>https://www.diversewayclinic.com/blog/child-development-milestones.html</loc>
     <lastmod>2026-05-31T00:00:00+00:00</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
 </urlset>
