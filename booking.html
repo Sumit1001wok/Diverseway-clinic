@@ -86,7 +86,7 @@
 
           <div class="field-grid">
             <label class="field">
-              <span>Full Name <span class="req">*</span></span>
+              <span>Parent / Guardian Name <span class="req">*</span></span>
               <input id="bk-name" type="text" placeholder="Your full name" autocomplete="name">
             </label>
 
@@ -95,17 +95,42 @@
               <input id="bk-phone" type="tel" placeholder="e.g. 9845366417" autocomplete="tel">
             </label>
 
+            <label class="field">
+              <span>Email</span>
+              <input id="bk-email" type="email" placeholder="you@example.com" autocomplete="email">
+            </label>
+
+            <label class="field">
+              <span>Visit Type</span>
+              <select id="bk-visit-type">
+                <option value="new" selected>First visit</option>
+                <option value="follow_up">Follow-up visit</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Patient Name</span>
+              <input id="bk-patient-name" type="text" placeholder="Child or patient name (if different)">
+            </label>
+
+            <label class="field">
+              <span>Patient Age</span>
+              <input id="bk-patient-age" type="text" placeholder="e.g. 5 years">
+            </label>
+
             <label class="field field-full">
               <span>Service <span class="req">*</span></span>
               <select id="bk-service">
                 <option value="" selected disabled>Select a service</option>
-                <option>Speech Therapy</option>
-                <option>Occupational Therapy</option>
-                <option>Behaviour Therapy</option>
-                <option>Psychological Counselling</option>
-                <option>Voice Therapy</option>
-                <option>Other</option>
+                <option value="Speech Therapy">Speech Therapy (30 min)</option>
+                <option value="Occupational Therapy">Occupational Therapy (45 min)</option>
+                <option value="Behaviour Therapy">Behaviour Therapy (45 min)</option>
+                <option value="Psychological Counselling">Psychological Counselling (45 min)</option>
+                <option value="Voice Therapy">Voice Therapy (30 min)</option>
+                <option value="Special Education Support">Special Education Support (45 min)</option>
+                <option value="Other">Other (45 min)</option>
               </select>
+              <small id="bk-service-help" class="field-help muted">Select a service first — available times depend on session length.</small>
             </label>
 
             <label class="field">
@@ -115,7 +140,10 @@
 
             <label class="field">
               <span>Preferred Time</span>
-              <input id="bk-time" type="time">
+              <select id="bk-time" disabled>
+                <option value="">Select a date first</option>
+              </select>
+              <small id="bk-time-help" class="field-help muted">Select a service and date to see available appointment times.</small>
             </label>
 
             <label class="field field-full">
@@ -138,7 +166,8 @@
         <aside class="booking-side">
           <div class="hours-card">
             <h3>Clinic Hours</h3>
-            <p><strong>Mon–Sat:</strong> 9 AM – 6 PM</p>
+            <p><strong>Mon–Sat:</strong> 7 AM – 8 PM</p>
+            <p class="muted">Speech therapy: 30 min · OT &amp; behaviour therapy: 45 min</p>
             <p><strong>Sun:</strong> By Appointment</p>
           </div>
 

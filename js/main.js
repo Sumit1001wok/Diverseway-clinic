@@ -305,17 +305,150 @@ const bookingWhatsAppButton = document.getElementById("bk-whatsapp");
 if (bookingButton || bookingWhatsAppButton) {
   const nameInput = document.getElementById("bk-name");
   const phoneInput = document.getElementById("bk-phone");
+  const emailInput = document.getElementById("bk-email");
+  const visitTypeInput = document.getElementById("bk-visit-type");
+  const patientNameInput = document.getElementById("bk-patient-name");
+  const patientAgeInput = document.getElementById("bk-patient-age");
   const serviceInput = document.getElementById("bk-service");
+  const serviceHelp = document.getElementById("bk-service-help");
   const dateInput = document.getElementById("bk-date");
   const timeInput = document.getElementById("bk-time");
+  const timeHelp = document.getElementById("bk-time-help");
   const messageInput = document.getElementById("bk-message");
   const errorEl = document.getElementById("bk-error");
   const successEl = document.getElementById("bk-success");
+
+  if (dateInput) {
+    dateInput.min = new Date().toISOString().slice(0, 10);
+  }
+
+  const BOOKING_DURATIONS = {
+    "Speech Therapy": 30,
+    "Occupational Therapy": 45,
+    "Behaviour Therapy": 45,
+    "Psychological Counselling": 45,
+    "Voice Therapy": 30,
+    "Special Education Support": 45,
+    Other: 45,
+  };
+
+  function updateServiceHelp() {
+    if (!serviceHelp) {
+      return;
+    }
+
+    const service = (serviceInput?.value || "").trim();
+    const duration = BOOKING_DURATIONS[service];
+
+    if (!service) {
+      serviceHelp.textContent = "Select a service first — available times depend on session length.";
+      return;
+    }
+
+    serviceHelp.textContent = `${service} sessions are ${duration} minutes. Pick a date to load open times.`;
+  }
+
+  function applyServiceFromUrl() {
+    const service = new URLSearchParams(window.location.search).get("service");
+    if (!serviceInput || !service) {
+      return;
+    }
+
+    const options = Array.from(serviceInput.options);
+    const match = options.find((option) => option.value === service || option.text.startsWith(service));
+
+    if (match) {
+      serviceInput.value = match.value;
+      updateServiceHelp();
+      loadAvailableTimes();
+    }
+  }
+
+  async function loadAvailableTimes() {
+    if (!timeInput) {
+      return;
+    }
+
+    const date = (dateInput?.value || "").trim();
+    const service = (serviceInput?.value || "").trim();
+
+    if (!date) {
+      timeInput.innerHTML = `<option value="">Select a date first</option>`;
+      timeInput.disabled = true;
+      if (timeHelp) {
+        timeHelp.textContent = "Choose a date to see available appointment times.";
+      }
+      return;
+    }
+
+    if (!service) {
+      timeInput.innerHTML = `<option value="">Select a service first</option>`;
+      timeInput.disabled = true;
+      if (timeHelp) {
+        timeHelp.textContent = "Select a service to see session length and available times.";
+      }
+      return;
+    }
+
+    timeInput.disabled = true;
+    timeInput.innerHTML = `<option value="">Loading times…</option>`;
+
+    try {
+      const params = new URLSearchParams({ date, service });
+      const res = await fetch(`/api/availability?${params.toString()}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Could not load available times.");
+      }
+
+      if (!data.data.length) {
+        timeInput.innerHTML = `<option value="">No posted times for this date</option>`;
+        timeInput.disabled = false;
+        if (timeHelp) {
+          timeHelp.textContent = `No ${data.duration_minutes}-minute slots available for this date yet. You can still submit your request and we'll contact you to schedule.`;
+        }
+        return;
+      }
+
+      timeInput.innerHTML =
+        `<option value="">Select an available time</option>` +
+        data.data
+          .map((slot) => `<option value="${slot.time}">${slot.label}</option>`)
+          .join("");
+      timeInput.disabled = false;
+      if (timeHelp) {
+        timeHelp.textContent = `${data.data.length} available ${data.duration_minutes}-minute session(s) for ${service}.`;
+      }
+    } catch (err) {
+      timeInput.innerHTML = `<option value="">Could not load times</option>`;
+      timeInput.disabled = false;
+      if (timeHelp) {
+        timeHelp.textContent = err.message;
+      }
+    }
+  }
+
+  dateInput?.addEventListener("change", () => {
+    loadAvailableTimes();
+  });
+
+  serviceInput?.addEventListener("change", () => {
+    updateServiceHelp();
+    loadAvailableTimes();
+  });
+
+  updateServiceHelp();
+  applyServiceFromUrl();
 
   function getBookingFields() {
     return {
       name: (nameInput?.value || "").trim(),
       phone: (phoneInput?.value || "").trim(),
+      email: (emailInput?.value || "").trim(),
+      visit_type: (visitTypeInput?.value || "new").trim(),
+      patient_name: (patientNameInput?.value || "").trim(),
+      patient_age: (patientAgeInput?.value || "").trim(),
       service: (serviceInput?.value || "").trim(),
       preferred_date: (dateInput?.value || "").trim(),
       preferred_time: (timeInput?.value || "").trim(),
@@ -330,20 +463,33 @@ if (bookingButton || bookingWhatsAppButton) {
       });
       return false;
     }
+
+    if (fields.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
+      setFormFeedback(errorEl, successEl, {
+        error: "Please enter a valid email address.",
+      });
+      return false;
+    }
+
     setFormFeedback(errorEl, successEl);
     return true;
   }
 
   function openBookingWhatsApp(fields) {
+    const visitLabel = fields.visit_type === "follow_up" ? "Follow-up visit" : "First visit";
     const lines = [
       "Hello Diverse Way Clinic! I'd like to book an appointment.",
       `Name: ${fields.name}`,
       `Phone: ${fields.phone}`,
+      fields.email ? `Email: ${fields.email}` : null,
+      `Visit type: ${visitLabel}`,
+      fields.patient_name ? `Patient: ${fields.patient_name}` : null,
+      fields.patient_age ? `Age: ${fields.patient_age}` : null,
       `Service: ${fields.service}`,
-      `Date: ${fields.preferred_date || "Not specified"}`,
-      `Time: ${fields.preferred_time || "Not specified"}`,
+      `Preferred date: ${fields.preferred_date || "Not specified"}`,
+      `Preferred time: ${fields.preferred_time || "Not specified"}`,
       `Message: ${fields.message || "—"}`,
-    ];
+    ].filter(Boolean);
     const url = `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join("\n"))}`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -363,9 +509,19 @@ if (bookingButton || bookingWhatsAppButton) {
         setFormFeedback(errorEl, successEl, { success: data.message });
         nameInput.value = "";
         phoneInput.value = "";
+        if (emailInput) emailInput.value = "";
+        if (visitTypeInput) visitTypeInput.value = "new";
+        if (patientNameInput) patientNameInput.value = "";
+        if (patientAgeInput) patientAgeInput.value = "";
         if (serviceInput) serviceInput.selectedIndex = 0;
         if (dateInput) dateInput.value = "";
-        if (timeInput) timeInput.value = "";
+        if (timeInput) {
+          timeInput.innerHTML = `<option value="">Select a date first</option>`;
+          timeInput.disabled = true;
+        }
+        if (timeHelp) {
+          timeHelp.textContent = "Choose a date to see available appointment times.";
+        }
         if (messageInput) messageInput.value = "";
       } catch (err) {
         setFormFeedback(errorEl, successEl, { error: err.message });

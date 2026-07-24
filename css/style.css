@@ -1819,7 +1819,31 @@ main {
 }
 
 .service-book-btn {
+  margin-top: 0;
+}
+
+.service-book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
   margin-top: 1.1rem;
+}
+
+.service-book-actions .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.15rem;
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+}
+
+.service-book-actions .btn-primary:hover {
+  filter: brightness(1.05);
 }
 
 .service-detail-card:hover {
@@ -2409,6 +2433,14 @@ main {
 
 .muted {
   margin-top: 0.35rem;
+  color: #4a5068;
+}
+
+.field-help {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
   color: #4a5068;
 }
 

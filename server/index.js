@@ -7,8 +7,10 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const session = require("express-session");
+const cookieParser = require("cookie-parser");
 
-require("./db");
+const { getDbInfo } = require("./db");
 
 const apiRoutes = require("./routes/api");
 const adminRoutes = require("./routes/admin");
@@ -27,8 +29,28 @@ app.use(
     contentSecurityPolicy: false,
   })
 );
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
+app.use(cookieParser());
 app.use(express.json({ limit: "32kb" }));
+app.use(
+  session({
+    name: "dwc.sid",
+    secret: process.env.SESSION_SECRET || process.env.ADMIN_API_KEY || "dev-session-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
 
 const formLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -51,6 +73,10 @@ app.get("/admin", (_req, res) => {
   res.sendFile(path.join(rootDir, "admin", "index.html"));
 });
 
+app.get("/admin/login", (_req, res) => {
+  res.sendFile(path.join(rootDir, "admin", "index.html"));
+});
+
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api") || path.extname(req.path)) {
     return next();
@@ -64,8 +90,11 @@ app.use((_req, res) => {
 
 app.listen(PORT, HOST, () => {
   const siteUrl = process.env.SITE_URL || `http://localhost:${PORT}`;
+  const dbInfo = getDbInfo();
   console.log(`Diverse Way Clinic running at ${siteUrl}`);
+  console.log(`Database: SQLite at ${dbInfo.path}`);
   if (!isProduction) {
     console.log(`Local: http://localhost:${PORT}`);
+    console.log(`Admin login: http://localhost:${PORT}/admin`);
   }
 });

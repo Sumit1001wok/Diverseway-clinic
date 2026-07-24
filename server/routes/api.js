@@ -1,7 +1,13 @@
 "use strict";
 
 const express = require("express");
-const { createBooking, createContact } = require("../db");
+const {
+  createBooking,
+  createContact,
+  getDbInfo,
+  listAvailableStartTimes,
+  getServiceDuration,
+} = require("../db");
 
 const router = express.Router();
 
@@ -10,12 +16,38 @@ function trim(value) {
 }
 
 router.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "diverse-way-clinic-api" });
+  res.json({
+    ok: true,
+    service: "diverse-way-clinic-api",
+    database: getDbInfo(),
+  });
+});
+
+router.get("/availability", (req, res) => {
+  const date = trim(req.query.date);
+  const service = trim(req.query.service);
+
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: "A valid date is required (YYYY-MM-DD)." });
+  }
+
+  if (!service) {
+    return res.status(400).json({ error: "Please select a service to view available times." });
+  }
+
+  const durationMinutes = getServiceDuration(service);
+  const slots = listAvailableStartTimes(date, service);
+
+  res.json({ date, service, duration_minutes: durationMinutes, data: slots });
 });
 
 router.post("/booking", (req, res) => {
   const name = trim(req.body.name);
   const phone = trim(req.body.phone);
+  const email = trim(req.body.email) || null;
+  const patient_name = trim(req.body.patient_name) || null;
+  const patient_age = trim(req.body.patient_age) || null;
+  const visit_type = trim(req.body.visit_type) || "new";
   const service = trim(req.body.service);
   const preferred_date = trim(req.body.preferred_date) || null;
   const preferred_time = trim(req.body.preferred_time) || null;
@@ -31,20 +63,42 @@ router.post("/booking", (req, res) => {
     return res.status(400).json({ error: "Please enter a valid phone number." });
   }
 
-  const row = createBooking({
-    name,
-    phone,
-    service,
-    preferred_date,
-    preferred_time,
-    message,
-  });
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: "Please enter a valid email address." });
+  }
 
-  res.status(201).json({
-    ok: true,
-    id: row.id,
-    message: "Appointment request received. We will contact you shortly.",
-  });
+  const allowedVisitTypes = ["new", "follow_up"];
+  if (!allowedVisitTypes.includes(visit_type)) {
+    return res.status(400).json({ error: "Invalid visit type." });
+  }
+
+  try {
+    const row = createBooking({
+      name,
+      phone,
+      email,
+      patient_name,
+      patient_age,
+      visit_type,
+      service,
+      preferred_date,
+      preferred_time,
+      message,
+      source: "website",
+    });
+
+    res.status(201).json({
+      ok: true,
+      id: row.id,
+      reference: row.reference,
+      message: `Appointment request received. Reference: ${row.reference}. We will contact you shortly.`,
+    });
+  } catch (err) {
+    if (err.code === "SLOT_UNAVAILABLE") {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
 });
 
 router.post("/contact", (req, res) => {
