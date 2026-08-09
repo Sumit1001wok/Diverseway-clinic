@@ -142,6 +142,21 @@ function initSchema() {
       value TEXT NOT NULL,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS screening_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      category_label TEXT,
+      age_band TEXT,
+      answers TEXT NOT NULL,
+      notes TEXT,
+      conclusion TEXT NOT NULL,
+      contact_name TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      is_reviewed INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
   `);
 
   migrateBookingColumns();
@@ -157,6 +172,7 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_testimonials_sort ON testimonials(sort_order);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_published ON blog_posts(published_at DESC);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_status ON blog_posts(status);
+    CREATE INDEX IF NOT EXISTS idx_screening_created_at ON screening_submissions(created_at DESC);
   `);
 }
 
@@ -1370,6 +1386,62 @@ function setSetting(key, value) {
   return getSetting(key);
 }
 
+function withScreeningSubmission(row) {
+  if (!row) {
+    return null;
+  }
+  return { ...row, answers: parseJsonField(row.answers, {}) };
+}
+
+function createScreeningSubmission(payload) {
+  const now = nowIso();
+  const result = db
+    .prepare(
+      `
+      INSERT INTO screening_submissions (
+        category, category_label, age_band, answers, notes, conclusion,
+        contact_name, contact_phone, contact_email, created_at
+      ) VALUES (
+        @category, @category_label, @age_band, @answers, @notes, @conclusion,
+        @contact_name, @contact_phone, @contact_email, @created_at
+      )
+    `
+    )
+    .run({
+      category: payload.category,
+      category_label: payload.category_label || null,
+      age_band: payload.age_band || null,
+      answers: JSON.stringify(payload.answers || {}),
+      notes: payload.notes || null,
+      conclusion: payload.conclusion,
+      contact_name: payload.contact_name || null,
+      contact_phone: payload.contact_phone || null,
+      contact_email: payload.contact_email || null,
+      created_at: now,
+    });
+  return withScreeningSubmission(
+    db.prepare("SELECT * FROM screening_submissions WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+function listScreeningSubmissions() {
+  return db
+    .prepare("SELECT * FROM screening_submissions ORDER BY datetime(created_at) DESC, id DESC")
+    .all()
+    .map(withScreeningSubmission);
+}
+
+function updateScreeningSubmissionReviewed(id, isReviewed) {
+  const result = db
+    .prepare("UPDATE screening_submissions SET is_reviewed = ? WHERE id = ?")
+    .run(isReviewed ? 1 : 0, id);
+  return result.changes > 0;
+}
+
+function deleteScreeningSubmission(id) {
+  return db.prepare("DELETE FROM screening_submissions WHERE id = ?").run(id).changes > 0;
+}
+
 module.exports = {
   createBooking,
   createContact,
@@ -1417,4 +1489,8 @@ module.exports = {
   getSetting,
   listSettings,
   setSetting,
+  createScreeningSubmission,
+  listScreeningSubmissions,
+  updateScreeningSubmissionReviewed,
+  deleteScreeningSubmission,
 };

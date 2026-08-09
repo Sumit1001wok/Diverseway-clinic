@@ -38,6 +38,9 @@ const {
   deleteBlogPost,
   listSettings,
   setSetting,
+  listScreeningSubmissions,
+  updateScreeningSubmissionReviewed,
+  deleteScreeningSubmission,
 } = require("../db");
 const { requireAdmin, hasValidSession, verifyAdminLogin } = require("../middleware/auth");
 
@@ -460,6 +463,29 @@ router.patch("/settings/:key", (req, res) => {
   }
   const value = setSetting(key, req.body.value);
   res.json({ ok: true, data: { key, value } });
+});
+
+router.get("/screening", (_req, res) => {
+  res.json({ data: listScreeningSubmissions() });
+});
+
+router.patch("/screening/:id/reviewed", (req, res) => {
+  const id = Number(req.params.id);
+  const isReviewed = req.body.is_reviewed !== false;
+
+  if (!updateScreeningSubmissionReviewed(id, isReviewed)) {
+    return res.status(404).json({ error: "Submission not found." });
+  }
+
+  res.json({ ok: true, id, is_reviewed: isReviewed ? 1 : 0 });
+});
+
+router.delete("/screening/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!deleteScreeningSubmission(id)) {
+    return res.status(404).json({ error: "Submission not found." });
+  }
+  res.json({ ok: true, id });
 });
 
 module.exports = router;

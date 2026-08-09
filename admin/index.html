@@ -58,6 +58,7 @@
             <a href="#availability-panel">Availability</a>
             <a href="#bookings-panel">Bookings</a>
             <a href="#messages-panel">Messages</a>
+            <a href="#screenings-panel">Screenings</a>
             <a href="#services-panel">Services</a>
             <a href="#team-panel">Team</a>
             <a href="#testimonials-panel">Testimonials</a>
@@ -153,6 +154,22 @@
                 </tr>
               </thead>
               <tbody id="messages-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="screenings-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Screening tool submissions</h2>
+            <button id="refresh-screenings" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+          <p class="muted panel-intro">Completed screenings from the homepage tool. Rows with contact info requested a callback.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Date</th><th>Category</th><th>Age band</th><th>Result</th><th>Contact</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="screenings-body"></tbody>
             </table>
           </div>
         </section>
@@ -322,6 +339,28 @@
           </div>
           <p id="modal-error" class="form-error" role="status"></p>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="screening-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-screening-modal></div>
+    <div class="modal-card booking-card" role="dialog" aria-modal="true" aria-labelledby="screening-modal-title">
+      <div class="modal-head">
+        <div>
+          <p class="modal-ref hero-eyebrow" id="screening-modal-eyebrow"></p>
+          <h2 class="section-title admin-section-title" id="screening-modal-title">Screening details</h2>
+        </div>
+        <button type="button" class="modal-close" data-close-screening-modal aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-grid" id="screening-modal-details"></div>
+        <div class="modal-actions">
+          <div class="quick-actions"></div>
+          <div class="save-actions">
+            <button type="button" class="btn-danger btn-sm" id="screening-modal-delete">Delete</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

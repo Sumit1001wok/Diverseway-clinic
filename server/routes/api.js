@@ -12,6 +12,7 @@ const {
   listTestimonials,
   listBlogPosts,
   listSettings,
+  createScreeningSubmission,
 } = require("../db");
 
 const router = express.Router();
@@ -132,6 +133,40 @@ router.post("/booking", (req, res) => {
     }
     throw err;
   }
+});
+
+router.post("/screening", (req, res) => {
+  const category = trim(req.body.category);
+  const categoryLabel = trim(req.body.category_label) || null;
+  const ageBand = trim(req.body.age_band) || null;
+  const conclusion = trim(req.body.conclusion);
+  const notes = trim(req.body.notes) || null;
+  const answers = req.body.answers && typeof req.body.answers === "object" ? req.body.answers : {};
+  const contactName = trim(req.body.contact_name) || null;
+  const contactPhone = trim(req.body.contact_phone) || null;
+  const contactEmail = trim(req.body.contact_email) || null;
+
+  if (!category || !conclusion) {
+    return res.status(400).json({ error: "Category and conclusion are required." });
+  }
+
+  if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+    return res.status(400).json({ error: "Please enter a valid email address." });
+  }
+
+  const row = createScreeningSubmission({
+    category,
+    category_label: categoryLabel,
+    age_band: ageBand,
+    answers,
+    notes,
+    conclusion,
+    contact_name: contactName,
+    contact_phone: contactPhone,
+    contact_email: contactEmail,
+  });
+
+  res.status(201).json({ ok: true, id: row.id });
 });
 
 router.post("/contact", (req, res) => {

@@ -43,6 +43,11 @@ const contentModalError = document.getElementById("content-modal-error");
 const settingsForm = document.getElementById("settings-form");
 const settingsError = document.getElementById("settings-error");
 const settingsSuccess = document.getElementById("settings-success");
+const refreshScreeningsBtn = document.getElementById("refresh-screenings");
+const screeningModal = document.getElementById("screening-modal");
+const screeningModalEyebrow = document.getElementById("screening-modal-eyebrow");
+const screeningModalDetails = document.getElementById("screening-modal-details");
+const screeningModalDeleteBtn = document.getElementById("screening-modal-delete");
 
 const WHATSAPP_PHONE = "9779845366417";
 const STATUS_LABELS = {
@@ -61,6 +66,15 @@ let availabilityRows = [];
 const contentData = { services: [], team: [], testimonials: [], blog: [] };
 let activeContentEntity = null;
 let activeContentId = null;
+let allScreenings = [];
+let activeScreeningId = null;
+
+const TIER_LABELS = {
+  ontrack: "✅ On Track",
+  monitor: "⚠️ Monitor & Rescreen",
+  consult: "🟠 Consult SLP",
+  refer: "🔴 Refer Immediately",
+};
 
 const fetchOptions = {
   credentials: "same-origin",
@@ -413,8 +427,100 @@ async function loadDashboard() {
   renderBookingTable();
   renderMessages(allMessages);
   await loadAvailability();
-  await Promise.all([loadAllContent(), loadSettings()]);
+  await Promise.all([loadAllContent(), loadSettings(), loadScreenings()]);
 }
+
+function renderScreenings() {
+  if (!allScreenings.length) {
+    document.getElementById("screenings-body").innerHTML =
+      '<tr><td colspan="6" class="empty">No screening submissions yet.</td></tr>';
+    return;
+  }
+
+  document.getElementById("screenings-body").innerHTML = allScreenings
+    .map(
+      (row) => `
+    <tr>
+      <td>${formatDate(row.created_at)}</td>
+      <td>${escapeHtml(row.category_label || row.category)}</td>
+      <td>${escapeHtml(row.age_band || "—")}</td>
+      <td>${TIER_LABELS[row.conclusion] || escapeHtml(row.conclusion)}</td>
+      <td>${row.contact_name ? `${escapeHtml(row.contact_name)}<br>${escapeHtml(row.contact_phone || "")}` : "—"}</td>
+      <td><button type="button" class="btn-outline btn-sm" data-view-screening="${row.id}">View</button></td>
+    </tr>`
+    )
+    .join("");
+
+  document.querySelectorAll("[data-view-screening]").forEach((btn) => {
+    btn.addEventListener("click", () => openScreeningModal(Number(btn.dataset.viewScreening)));
+  });
+}
+
+async function loadScreenings() {
+  const res = await apiFetch("/api/admin/screening");
+  allScreenings = res.data;
+  renderScreenings();
+}
+
+function openScreeningModal(id) {
+  const row = allScreenings.find((r) => r.id === id);
+  if (!row) {
+    return;
+  }
+
+  activeScreeningId = id;
+  screeningModalEyebrow.textContent = (row.category_label || row.category).toUpperCase();
+  document.getElementById("screening-modal-title").textContent = TIER_LABELS[row.conclusion] || row.conclusion;
+
+  const answerRows = Object.entries(row.answers || {})
+    .map(([key, value]) => `<div class="detail-item"><span>${escapeHtml(key)}</span><strong>${escapeHtml(String(value))}</strong></div>`)
+    .join("");
+
+  screeningModalDetails.innerHTML = `
+    <div class="detail-item"><span>Submitted</span><strong>${formatDate(row.created_at)}</strong></div>
+    <div class="detail-item"><span>Age band</span><strong>${escapeHtml(row.age_band || "—")}</strong></div>
+    <div class="detail-item"><span>Contact</span><strong>${escapeHtml(row.contact_name || "—")}</strong>${row.contact_phone ? `<br>${escapeHtml(row.contact_phone)}` : ""}${row.contact_email ? `<br>${escapeHtml(row.contact_email)}` : ""}</div>
+    <div class="detail-item detail-full"><span>Notes</span><p>${escapeHtml(row.notes || "—")}</p></div>
+    ${answerRows}
+  `;
+
+  screeningModal.classList.remove("hidden");
+  screeningModal.setAttribute("aria-hidden", "false");
+}
+
+function closeScreeningModal() {
+  screeningModal.classList.add("hidden");
+  screeningModal.setAttribute("aria-hidden", "true");
+  activeScreeningId = null;
+}
+
+screeningModal?.querySelectorAll("[data-close-screening-modal]").forEach((el) => {
+  el.addEventListener("click", closeScreeningModal);
+});
+
+screeningModalDeleteBtn?.addEventListener("click", async () => {
+  if (!activeScreeningId) {
+    return;
+  }
+  if (!window.confirm("Delete this screening submission? This cannot be undone.")) {
+    return;
+  }
+  try {
+    await apiFetch(`/api/admin/screening/${activeScreeningId}`, { method: "DELETE" });
+    closeScreeningModal();
+    await loadScreenings();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+refreshScreeningsBtn?.addEventListener("click", async () => {
+  try {
+    await loadScreenings();
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 const CONTENT_ENTITIES = {
   services: {
@@ -762,6 +868,7 @@ function showLogin() {
   logoutBtn?.classList.add("hidden");
   closeBookingModal();
   closeContentModal();
+  closeScreeningModal();
 }
 
 bookingFilters?.addEventListener("click", (event) => {
@@ -907,6 +1014,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (!contentModal.classList.contains("hidden")) {
     closeContentModal();
+  }
+  if (!screeningModal.classList.contains("hidden")) {
+    closeScreeningModal();
   }
 });
 
