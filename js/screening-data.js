@@ -43,6 +43,72 @@ function severityOptions(mild, moderate, severe) {
   ];
 }
 
+// Authentic concern phrasing pulled from the source dataset's "Concerns" column
+// per category. This is an opening context question — it isn't part of any
+// evaluate() scoring (confirmed unused in every category's labeled rules
+// except Language Delay, where presence/absence of a concern is itself a
+// scoring input) but gives staff real intake context instead of a bare yes/no.
+const CONCERN_OPTIONS = {
+  "language-delay": [
+    { value: "not_speaking_age_appropriately", label: "Not speaking age-appropriately" },
+    { value: "doesnt_understand_instructions", label: "Doesn't understand age-appropriate instructions" },
+    { value: "doesnt_make_sentences", label: "Doesn't make proper sentences" },
+    { value: "doesnt_respond_to_name", label: "Doesn't respond to name" },
+    { value: "increases_volume_too_much", label: "Increases volume too much" },
+    { value: "speaks_but_cant_communicate", label: "Speaks but cannot communicate properly" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  articulation: [
+    { value: "difficulty_producing_sounds", label: "Difficulty producing certain sounds" },
+    { value: "people_cant_understand", label: "People can't understand my child clearly" },
+    { value: "omits_replaces_sounds", label: "Leaves out or replaces sounds in words" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  voice: [
+    { value: "hoarse_voice", label: "Hoarse voice" },
+    { value: "change_in_voice", label: "Noticeable change in voice" },
+    { value: "voice_tired_quickly", label: "Voice gets tired quickly" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  fluency: [
+    { value: "blocks_while_speaking", label: "Blocks while speaking" },
+    { value: "repeats_prolongs_sounds", label: "Repeats or prolongs sounds/words" },
+    { value: "speaks_very_fast", label: "Speaks very fast" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  apraxia: [
+    { value: "speech_difficult_effortful", label: "Speech looks difficult and effortful" },
+    { value: "understands_cannot_say", label: "Understands but cannot say" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  dysarthria: [
+    { value: "speech_weak_nasal", label: "Speech sounds weak or nasal" },
+    { value: "difficulty_controlling_volume", label: "Difficulty controlling volume" },
+    { value: "slow_speech_rate", label: "Slow speech rate" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  aphasia: [
+    { value: "difficulty_understanding_speech", label: "Difficulty understanding speech" },
+    { value: "suddenly_unable_to_speak", label: "Suddenly unable to speak properly" },
+    { value: "word_finding_difficulty", label: "Word-finding difficulty" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+  resonance: [
+    { value: "air_escapes_nose", label: "Air escapes through the nose while speaking" },
+    { value: "nasal_sound", label: "Nasal-sounding speech" },
+    { value: "no_concern", label: "No specific concern — just checking" },
+  ],
+};
+
+function concernQuestion(categoryId, label) {
+  return {
+    id: "concern",
+    label: label || "What's your main concern?",
+    type: "select",
+    options: CONCERN_OPTIONS[categoryId],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 1 & 2. Language Delay + Articulation (age-banded, children)
 // ---------------------------------------------------------------------------
@@ -97,7 +163,7 @@ const LANGUAGE_DELAY_MILESTONES = {
 function languageDelayQuestions(ageBandId) {
   const milestones = LANGUAGE_DELAY_MILESTONES[ageBandId];
   return [
-    { id: "concern", label: "Do you have a specific concern about your child's speech or language?", type: "yesno", options: YESNO },
+    concernQuestion("language-delay", "What's your main concern about your child's speech or language?"),
     { id: "birthTerm", label: "Was your child born premature (before 37 weeks)?", type: "yesno", options: YESNO },
     { id: "medicalCondition", label: "Any diagnosed medical condition (e.g. ADHD, ASD, genetic condition)?", type: "yesno", options: YESNO },
     {
@@ -140,7 +206,7 @@ function languageDelayQuestions(ageBandId) {
 function evaluateLanguageDelay(answers, ageBandId) {
   const milestoneIds = LANGUAGE_DELAY_MILESTONES[ageBandId].map((m) => m.id);
   const notYetCount = milestoneIds.filter((id) => answers[id] === "no").length;
-  const concern = answers.concern === "yes";
+  const concern = answers.concern && answers.concern !== "no_concern";
   const respondsToName = answers.respondsToName === "yes";
   const regression = answers.lostSkills === "yes";
   const hearingFailed = answers.hearingTest === "failed";
@@ -183,6 +249,7 @@ const ARTICULATION_PART3 = [
 
 function articulationQuestions() {
   return [
+    concernQuestion("articulation", "What's your main concern about your child's speech?"),
     { id: "hearingLoss", label: "Any diagnosed hearing loss?", type: "yesno", options: YESNO },
     { id: "structuralDifference", label: "Any structural difference in mouth, lips, or palate (cleft palate, tongue tie)?", type: "yesno", options: YESNO },
     { id: "associatedCondition", label: "Any associated genetic or neurological condition (e.g. Down syndrome, ADHD, ASD)?", type: "yesno", options: YESNO },
@@ -230,6 +297,7 @@ const VOICE_PART3 = [
 
 function voiceQuestions() {
   return [
+    concernQuestion("voice", "What's your main concern about your voice?"),
     { id: "suddenChange", label: "Did your voice change suddenly in the last 2 weeks?", type: "yesno", options: YESNO },
     { id: "painLumpSwallow", label: "Do you feel pain, a lump, or difficulty swallowing?", type: "yesno", options: YESNO },
     { id: "recentInjury", label: "Any recent stroke, injury, or throat surgery?", type: "yesno", options: YESNO },
@@ -289,6 +357,7 @@ const FLUENCY_PART3 = [
 
 function fluencyQuestions() {
   return [
+    concernQuestion("fluency", "What's your main concern about your speech fluency?"),
     {
       id: "onset",
       label: "When did you first notice a problem with your speech fluency?",
@@ -361,6 +430,7 @@ const APRAXIA_UNDER3_PART3 = [
 
 function apraxiaQuestions(ageBandId, answers) {
   const questions = [
+    concernQuestion("apraxia", "What's your main concern about your child's speech?"),
     { id: "neuroCondition", label: "Any diagnosed neurological condition?", type: "yesno", options: YESNO },
     { id: "strokeHistory", label: "Any history of stroke or brain injury?", type: "yesno", options: YESNO },
     ...APRAXIA_PART3.map((q) => ({ id: q.id, label: q.label, type: "ysn", options: YSN })),
@@ -411,6 +481,7 @@ const DYSARTHRIA_PART3 = [
 
 function dysarthriaQuestions() {
   return [
+    concernQuestion("dysarthria", "What's your main concern about the speech difficulty?"),
     { id: "strokeHistory", label: "Any recent stroke or brain injury?", type: "yesno", options: YESNO },
     { id: "suddenOnset", label: "Did the speech difficulty start suddenly?", type: "yesno", options: YESNO },
     { id: "breathingSwallowing", label: "Any difficulty breathing or swallowing along with the speech change?", type: "yesno", options: YESNO },
@@ -464,6 +535,7 @@ const APHASIA_PART4 = [
 
 function aphasiaQuestions() {
   return [
+    concernQuestion("aphasia", "What's your main concern?"),
     { id: "strokeHistory", label: "Any history of stroke or traumatic brain injury?", type: "yesno", options: YESNO },
     { id: "progressiveDisease", label: "Any progressive neurological disease (e.g. dementia)?", type: "yesno", options: YESNO },
     { id: "brainTumor", label: "Any brain tumor or brain surgery?", type: "yesno", options: YESNO },
@@ -516,6 +588,7 @@ const RESONANCE_PART3 = [
 
 function resonanceQuestions() {
   return [
+    concernQuestion("resonance", "What's your main concern?"),
     { id: "cleftHistory", label: "Any history of cleft palate or cleft lip?", type: "yesno", options: YESNO },
     { id: "neuroGeneticCondition", label: "Any diagnosed neurological or genetic condition?", type: "yesno", options: YESNO },
     { id: "recentSurgery", label: "Any recent surgery on the mouth, nose, or throat?", type: "yesno", options: YESNO },

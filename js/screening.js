@@ -62,7 +62,7 @@
 
   function stepperHtml() {
     const hasAgeBand = Boolean(state.category && state.category.ageBands);
-    const labels = hasAgeBand ? ["Concern", "Age", "Questions", "Result"] : ["Concern", "Questions", "Result"];
+    const labels = hasAgeBand ? ["Topic", "Age", "Questions", "Result"] : ["Topic", "Questions", "Result"];
     let activeIndex = 0;
     if (state.step === "ageBand") activeIndex = 1;
     else if (state.step === "questions") activeIndex = hasAgeBand ? 2 : 1;
