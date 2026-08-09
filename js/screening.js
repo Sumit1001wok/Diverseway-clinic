@@ -24,9 +24,20 @@
     category: null,
     ageBand: null,
     answers: {},
+    questionIndex: 0,
+    notes: "",
     tier: null,
     submitted: false,
   };
+
+  let advanceTimer = null;
+
+  function clearAdvanceTimer() {
+    if (advanceTimer) {
+      clearTimeout(advanceTimer);
+      advanceTimer = null;
+    }
+  }
 
   function escapeHtml(value) {
     return String(value || "").replace(/[&<>"']/g, (char) => {
@@ -76,6 +87,8 @@
   }
 
   function render() {
+    clearAdvanceTimer();
+
     if (state.step === "category") renderCategoryStep();
     else if (state.step === "ageBand") renderAgeBandStep();
     else if (state.step === "questions") renderQuestionsStep();
@@ -110,6 +123,7 @@
         state.category = CATEGORIES.find((c) => c.id === btn.dataset.category);
         state.answers = {};
         state.ageBand = null;
+        state.questionIndex = 0;
         state.step = state.category.ageBands ? "ageBand" : "questions";
         render();
       });
@@ -137,89 +151,107 @@
     container.querySelectorAll("[data-ageband]").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.ageBand = btn.dataset.ageband;
+        state.questionIndex = 0;
         state.step = "questions";
         render();
       });
     });
   }
 
-  function questionHtml(q) {
-    const value = state.answers[q.id];
+  function progressBarHtml(index, total, label) {
+    const percent = total > 0 ? Math.round((index / total) * 100) : 0;
+    const text = label || `Question ${Math.min(index + 1, total)} of ${total}`;
     return `
-      <fieldset class="screening-question" data-question="${q.id}">
-        <legend>${escapeHtml(q.label)}</legend>
-        <div class="screening-options">
-          ${q.options
-            .map(
-              (opt) => `
-            <button type="button" class="screening-option-btn${value === opt.value ? " is-active" : ""}" data-value="${opt.value}">${escapeHtml(opt.label)}</button>`
-            )
-            .join("")}
-        </div>
-      </fieldset>
+      <div class="screening-progress-bar">
+        <div class="screening-progress-fill" style="width:${percent}%"></div>
+      </div>
+      <p class="screening-progress-label">${escapeHtml(text)}</p>
     `;
+  }
+
+  function goToQuestion(index) {
+    state.questionIndex = index;
+    render();
   }
 
   function renderQuestionsStep() {
     const questions = currentQuestions();
-    const answeredCount = questions.filter((q) => state.answers[q.id] !== undefined).length;
-    const allAnswered = answeredCount === questions.length;
+
+    if (state.questionIndex >= questions.length) {
+      renderNotesStep(questions.length);
+      return;
+    }
+
+    const q = questions[state.questionIndex];
+    const value = state.answers[q.id];
 
     container.innerHTML = `
       ${stepperHtml()}
       <div class="screening-step" data-step="questions">
         <button type="button" class="screening-back" data-back>← Back</button>
-        <h3 class="screening-step-title">${escapeHtml(state.category.label)}</h3>
-        <p class="muted">Answer honestly — there are no wrong answers. (${answeredCount}/${questions.length} answered)</p>
-        <form class="screening-form" id="screening-form">
-          ${questions.map(questionHtml).join("")}
-          <label class="field field-full screening-notes-field">
-            <span>Anything else you'd like to tell us? (optional)</span>
-            <textarea id="screening-notes" rows="3" placeholder="Optional context for our team...">${escapeHtml(state.notes || "")}</textarea>
-          </label>
-          <div class="screening-form-actions">
-            <button type="submit" class="btn-primary btn-primary-large" ${allAnswered ? "" : "disabled"}>See my results</button>
+        ${progressBarHtml(state.questionIndex, questions.length)}
+        <fieldset class="screening-single-question" data-question="${q.id}">
+          <legend class="screening-question-heading">${escapeHtml(q.label)}</legend>
+          <div class="screening-options screening-options-large">
+            ${q.options
+              .map(
+                (opt) => `
+              <button type="button" class="screening-option-btn${value === opt.value ? " is-active" : ""}" data-value="${opt.value}">${escapeHtml(opt.label)}</button>`
+              )
+              .join("")}
           </div>
-        </form>
+        </fieldset>
       </div>
     `;
 
     container.querySelector("[data-back]").addEventListener("click", () => {
-      state.step = state.category.ageBands ? "ageBand" : "category";
+      clearAdvanceTimer();
+      if (state.questionIndex === 0) {
+        state.step = state.category.ageBands ? "ageBand" : "category";
+      } else {
+        state.questionIndex -= 1;
+      }
       render();
     });
 
     container.querySelectorAll(".screening-option-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const fieldset = btn.closest("[data-question]");
-        const questionId = fieldset.dataset.question;
-        state.answers[questionId] = btn.dataset.value;
+        clearAdvanceTimer();
+        state.answers[q.id] = btn.dataset.value;
 
-        if (state.category.id === "apraxia" && questionId === "under3") {
-          render();
-          return;
-        }
-
-        fieldset.querySelectorAll(".screening-option-btn").forEach((b) => b.classList.remove("is-active"));
+        container.querySelectorAll(".screening-option-btn").forEach((b) => b.classList.remove("is-active"));
         btn.classList.add("is-active");
 
-        const submitBtn = container.querySelector('.screening-form-actions button[type="submit"]');
-        const stillNeeded = currentQuestions().filter((q) => state.answers[q.id] === undefined).length;
-        if (submitBtn) {
-          submitBtn.disabled = stillNeeded > 0;
-        }
-        const counter = container.querySelector(".screening-step p.muted");
-        if (counter) {
-          const total = currentQuestions().length;
-          const answered = total - stillNeeded;
-          counter.textContent = `Answer honestly — there are no wrong answers. (${answered}/${total} answered)`;
-        }
+        advanceTimer = setTimeout(() => {
+          advanceTimer = null;
+          goToQuestion(state.questionIndex + 1);
+        }, 320);
       });
     });
+  }
 
-    const form = document.getElementById("screening-form");
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
+  function renderNotesStep(totalQuestions) {
+    container.innerHTML = `
+      ${stepperHtml()}
+      <div class="screening-step" data-step="notes">
+        <button type="button" class="screening-back" data-back>← Back</button>
+        ${progressBarHtml(totalQuestions, totalQuestions, "Almost done")}
+        <h3 class="screening-question-heading">Anything else you'd like to tell us?</h3>
+        <p class="muted">Optional — helps our team prepare before reaching out.</p>
+        <label class="field field-full screening-notes-field">
+          <textarea id="screening-notes" rows="4" placeholder="Optional context for our team...">${escapeHtml(state.notes || "")}</textarea>
+        </label>
+        <div class="screening-form-actions">
+          <button type="button" class="btn-primary btn-primary-large" data-see-results>See my results</button>
+        </div>
+      </div>
+    `;
+
+    container.querySelector("[data-back]").addEventListener("click", () => {
+      goToQuestion(totalQuestions - 1);
+    });
+
+    container.querySelector("[data-see-results]").addEventListener("click", () => {
       state.notes = document.getElementById("screening-notes").value.trim();
       state.tier = state.category.evaluate(state.answers, state.ageBand);
       state.submitted = false;
@@ -306,6 +338,7 @@
       state.category = null;
       state.ageBand = null;
       state.answers = {};
+      state.questionIndex = 0;
       state.notes = "";
       state.tier = null;
       state.submitted = false;
