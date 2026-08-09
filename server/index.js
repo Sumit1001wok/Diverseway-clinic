@@ -10,7 +10,8 @@ const rateLimit = require("express-rate-limit");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
 
-const { getDbInfo } = require("./db");
+const { getDbInfo, getBlogPostBySlug } = require("./db");
+const { renderBlogPostPage, renderBlogNotFoundPage } = require("./templates/blogPost");
 
 const apiRoutes = require("./routes/api");
 const adminRoutes = require("./routes/admin");
@@ -66,6 +67,21 @@ app.get("/", (_req, res) => {
 
 app.use("/api", formLimiter, apiRoutes);
 app.use("/api/admin", adminRoutes);
+
+app.get("/blog/:slug", (req, res, next) => {
+  const slug = req.params.slug.replace(/\.html$/, "");
+  const post = getBlogPostBySlug(slug);
+
+  if (!post || post.status !== "published") {
+    return res.status(404).send(renderBlogNotFoundPage());
+  }
+
+  const relatedPosts = (post.related_slugs || [])
+    .map((relatedSlug) => getBlogPostBySlug(relatedSlug))
+    .filter((related) => related && related.status === "published");
+
+  res.send(renderBlogPostPage(post, relatedPosts));
+});
 
 app.use(express.static(rootDir, { index: false }));
 

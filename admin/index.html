@@ -4,137 +4,269 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Admin Login | Diverse Way Clinic</title>
+  <title>Admin | Diverse Way Clinic</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
   <link rel="stylesheet" href="admin.css">
 </head>
-<body>
-  <div id="login-screen" class="admin-login">
-    <form id="login-form" class="admin-login-card">
-      <p class="admin-login-badge">Staff only</p>
-      <h1>Clinic Admin Login</h1>
-      <p class="muted">Sign in to manage appointment requests and contact messages.</p>
-      <label class="field">
-        <span>Username</span>
-        <input id="admin-username" name="username" type="text" autocomplete="username" required>
-      </label>
-      <label class="field">
-        <span>Password</span>
-        <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
-      </label>
-      <button class="btn-primary" type="submit">Sign in</button>
-      <p id="login-error" class="form-error" role="status"></p>
-      <p class="admin-login-foot muted"><a href="../index.html">← Back to website</a></p>
-    </form>
-  </div>
-
-  <div id="dashboard" class="admin-dashboard hidden">
-    <header class="admin-header">
-      <div>
-        <h1>Diverse Way Clinic</h1>
-        <p class="muted">Booking management · signed in as <span id="admin-user">admin</span></p>
+<body class="admin-page page-ready">
+  <header class="site-header admin-site-header">
+    <nav class="navbar container">
+      <a class="brand" href="../index.html" aria-label="Diverse Way Clinic home">
+        <img class="brand-logo-img" src="../assets/images/logo.png" width="220" height="70" alt="" loading="eager" decoding="async">
+        <span class="brand-name">Diverse Way Clinic</span>
+      </a>
+      <div class="admin-header-actions">
+        <span class="admin-header-badge">Staff portal</span>
+        <a class="btn-outline btn-sm admin-header-link" href="../index.html">View website</a>
+        <button id="logout-btn" class="btn-outline btn-sm hidden" type="button">Sign out</button>
       </div>
-      <button id="logout-btn" class="btn-outline" type="button">Sign out</button>
-    </header>
+    </nav>
+  </header>
 
-    <div class="admin-stats" id="admin-stats"></div>
-
-    <section class="admin-panel">
-      <div class="panel-head">
-        <h2>Available appointment times</h2>
-        <button id="refresh-availability" class="btn-outline btn-sm" type="button">Refresh</button>
+  <main class="admin-main">
+    <div id="login-screen" class="admin-login">
+      <div class="admin-login-wrap container">
+        <form id="login-form" class="admin-login-card booking-card">
+          <p class="hero-eyebrow admin-login-badge">Staff only</p>
+          <h1 class="section-title admin-login-title">Clinic Admin</h1>
+          <p class="muted">Sign in to manage appointments, availability, and contact messages.</p>
+          <label class="field">
+            <span>Username</span>
+            <input id="admin-username" name="username" type="text" autocomplete="username" required>
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button class="btn-primary btn-primary-large admin-login-submit" type="submit">Sign in</button>
+          <p id="login-error" class="form-error" role="status"></p>
+        </form>
       </div>
-      <p class="muted panel-intro">Set open times in 15-minute blocks from 7 AM to 8 PM. Speech therapy uses 30 min slots; occupational and behaviour therapy use 45 min.</p>
+    </div>
 
-      <div class="availability-toolbar">
-        <label class="field availability-date-field">
-          <span>Date</span>
-          <input id="availability-date" type="date">
-        </label>
-        <label class="field availability-time-field">
-          <span>Add time</span>
-          <input id="availability-time" type="time" step="900">
-        </label>
-        <div class="availability-actions">
-          <button id="add-availability-slot" class="btn-outline btn-sm" type="button">Add time</button>
-          <button id="add-standard-hours" class="btn-primary btn-sm" type="button">Add clinic hours (7 AM – 8 PM)</button>
+    <div id="dashboard" class="admin-dashboard hidden">
+      <section class="admin-hero">
+        <div class="container admin-hero-content">
+          <p class="hero-eyebrow">Admin dashboard</p>
+          <h1 class="section-title">Booking management</h1>
+          <p class="muted">Signed in as <strong id="admin-user">admin</strong> · manage slots, appointments, and inbox</p>
+          <nav class="admin-quicknav" aria-label="Jump to section">
+            <a href="#availability-panel">Availability</a>
+            <a href="#bookings-panel">Bookings</a>
+            <a href="#messages-panel">Messages</a>
+            <a href="#services-panel">Services</a>
+            <a href="#team-panel">Team</a>
+            <a href="#testimonials-panel">Testimonials</a>
+            <a href="#blog-panel">Blog</a>
+            <a href="#settings-panel">Settings</a>
+          </nav>
         </div>
-      </div>
+      </section>
 
-      <div id="availability-slots" class="slot-grid"></div>
-      <p id="availability-error" class="form-error" role="status"></p>
-    </section>
+      <div class="container admin-dashboard-inner">
+        <section class="admin-stats-bar">
+          <div class="stats-grid admin-stats" id="admin-stats"></div>
+        </section>
 
-    <section class="admin-panel">
-      <div class="panel-head">
-        <h2>Appointment requests</h2>
-        <button id="refresh-bookings" class="btn-outline btn-sm" type="button">Refresh</button>
-      </div>
+        <section class="admin-panel booking-card" id="availability-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Available appointment times</h2>
+            <button id="refresh-availability" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+          <p class="muted panel-intro">Set open times in 15-minute blocks from 7 AM to 8 PM. Speech therapy uses 30 min slots; occupational and behaviour therapy use 45 min.</p>
 
-      <div class="booking-toolbar">
-        <div class="filter-tabs" id="booking-filters" role="tablist" aria-label="Filter bookings by status">
-          <button type="button" class="filter-tab is-active" data-status="all">All</button>
-          <button type="button" class="filter-tab" data-status="pending">Pending</button>
-          <button type="button" class="filter-tab" data-status="confirmed">Confirmed</button>
-          <button type="button" class="filter-tab" data-status="completed">Completed</button>
-          <button type="button" class="filter-tab" data-status="cancelled">Cancelled</button>
-        </div>
-        <label class="search-field">
-          <span class="sr-only">Search bookings</span>
-          <input id="booking-search" type="search" placeholder="Search ref, name, phone, service…">
-        </label>
-      </div>
+          <div class="availability-toolbar">
+            <label class="field availability-date-field">
+              <span>Date</span>
+              <input id="availability-date" type="date">
+            </label>
+            <label class="field availability-time-field">
+              <span>Add time</span>
+              <input id="availability-time" type="time" step="900">
+            </label>
+            <div class="availability-actions">
+              <button id="add-availability-slot" class="btn-outline btn-sm" type="button">Add time</button>
+              <button id="add-standard-hours" class="btn-primary btn-sm" type="button">Add clinic hours (7 AM – 8 PM)</button>
+            </div>
+          </div>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Ref</th>
-              <th>Submitted</th>
-              <th>Contact</th>
-              <th>Patient</th>
-              <th>Service</th>
-              <th>Preferred</th>
-              <th>Status</th>
-              <th>Assigned</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="bookings-body"></tbody>
-        </table>
-      </div>
-    </section>
+          <div id="availability-slots" class="slot-grid"></div>
+          <p id="availability-error" class="form-error" role="status"></p>
+        </section>
 
-    <section class="admin-panel">
-      <h2>Contact messages</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Subject</th>
-              <th>Message</th>
-              <th>Read</th>
-            </tr>
-          </thead>
-          <tbody id="messages-body"></tbody>
-        </table>
+        <section class="admin-panel booking-card" id="bookings-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Appointment requests</h2>
+            <button id="refresh-bookings" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+
+          <div class="booking-toolbar">
+            <div class="filter-tabs" id="booking-filters" role="tablist" aria-label="Filter bookings by status">
+              <button type="button" class="filter-tab is-active" data-status="all">All</button>
+              <button type="button" class="filter-tab" data-status="pending">Pending</button>
+              <button type="button" class="filter-tab" data-status="confirmed">Confirmed</button>
+              <button type="button" class="filter-tab" data-status="completed">Completed</button>
+              <button type="button" class="filter-tab" data-status="cancelled">Cancelled</button>
+            </div>
+            <label class="search-field">
+              <span class="sr-only">Search bookings</span>
+              <input id="booking-search" type="search" placeholder="Search ref, name, phone, service…">
+            </label>
+          </div>
+
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Ref</th>
+                  <th>Submitted</th>
+                  <th>Contact</th>
+                  <th>Patient</th>
+                  <th>Service</th>
+                  <th>Preferred</th>
+                  <th>Status</th>
+                  <th>Assigned</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="bookings-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="messages-panel">
+          <h2 class="section-title admin-section-title">Contact messages</h2>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Subject</th>
+                  <th>Message</th>
+                  <th>Read</th>
+                </tr>
+              </thead>
+              <tbody id="messages-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="services-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Services</h2>
+            <button type="button" class="btn-primary btn-sm" data-add-content="services">Add service</button>
+          </div>
+          <p class="muted panel-intro">Shown on the homepage services grid and the Services page. Drag order with sort order.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Name</th><th>Order</th><th>Active</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="services-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="team-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Team</h2>
+            <button type="button" class="btn-primary btn-sm" data-add-content="team">Add team member</button>
+          </div>
+          <p class="muted panel-intro">Shown on the homepage and the About page.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Name</th><th>Title</th><th>Order</th><th>Active</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="team-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="testimonials-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Testimonials</h2>
+            <button type="button" class="btn-primary btn-sm" data-add-content="testimonials">Add testimonial</button>
+          </div>
+          <p class="muted panel-intro">Shown on the homepage testimonials carousel.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Attribution</th><th>Stars</th><th>Order</th><th>Active</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="testimonials-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="blog-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Blog posts</h2>
+            <button type="button" class="btn-primary btn-sm" data-add-content="blog">Add post</button>
+          </div>
+          <p class="muted panel-intro">Only posts with status "Published" appear on the live site.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Title</th><th>Category</th><th>Published</th><th>Status</th><th>Featured</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="blog-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="settings-panel">
+          <h2 class="section-title admin-section-title">Clinic hours</h2>
+          <p class="muted panel-intro">Shown on the Contact and Booking pages.</p>
+          <form id="settings-form" class="manage-form">
+            <div class="form-grid field-grid">
+              <label class="field">
+                <span>Weekday label</span>
+                <input id="settings-weekday-label" name="weekday_label" type="text" placeholder="Mon–Sat">
+              </label>
+              <label class="field">
+                <span>Weekday hours</span>
+                <input id="settings-weekday-hours" name="weekday_hours" type="text" placeholder="9:00 AM – 6:00 PM">
+              </label>
+              <label class="field">
+                <span>Weekend label</span>
+                <input id="settings-weekend-label" name="weekend_label" type="text" placeholder="Sun">
+              </label>
+              <label class="field">
+                <span>Weekend hours</span>
+                <input id="settings-weekend-hours" name="weekend_hours" type="text" placeholder="By Appointment">
+              </label>
+            </div>
+            <div class="save-actions">
+              <button type="submit" class="btn-primary btn-sm">Save hours</button>
+            </div>
+            <p id="settings-error" class="form-error" role="status"></p>
+            <p id="settings-success" class="form-success" role="status" hidden></p>
+          </form>
+        </section>
       </div>
-    </section>
-  </div>
+    </div>
+  </main>
+
+  <footer class="site-footer admin-footer">
+    <div class="container footer-bottom-inner">
+      <p>&copy; 2025 Diverse Way Clinic · Staff admin portal</p>
+    </div>
+  </footer>
 
   <div id="booking-modal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop" data-close-modal></div>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card booking-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-head">
         <div>
-          <p class="modal-ref" id="modal-ref"></p>
-          <h2 id="modal-title">Manage booking</h2>
+          <p class="modal-ref hero-eyebrow" id="modal-ref"></p>
+          <h2 class="section-title admin-section-title" id="modal-title">Manage booking</h2>
         </div>
         <button type="button" class="modal-close" data-close-modal aria-label="Close">×</button>
       </div>
@@ -143,7 +275,7 @@
         <div class="detail-grid" id="modal-details"></div>
 
         <form id="booking-manage-form" class="manage-form">
-          <div class="form-grid">
+          <div class="form-grid field-grid">
             <label class="field">
               <span>Status</span>
               <select id="modal-status" name="status">
@@ -189,6 +321,33 @@
             </div>
           </div>
           <p id="modal-error" class="form-error" role="status"></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="content-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-content-modal></div>
+    <div class="modal-card booking-card" role="dialog" aria-modal="true" aria-labelledby="content-modal-title">
+      <div class="modal-head">
+        <div>
+          <p class="modal-ref hero-eyebrow" id="content-modal-eyebrow"></p>
+          <h2 class="section-title admin-section-title" id="content-modal-title">Edit item</h2>
+        </div>
+        <button type="button" class="modal-close" data-close-content-modal aria-label="Close">×</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="content-manage-form" class="manage-form">
+          <div class="form-grid field-grid" id="content-modal-fields"></div>
+          <div class="modal-actions">
+            <div class="quick-actions"></div>
+            <div class="save-actions">
+              <button type="button" class="btn-danger btn-sm" id="content-modal-delete">Delete</button>
+              <button type="submit" class="btn-primary btn-sm">Save</button>
+            </div>
+          </div>
+          <p id="content-modal-error" class="form-error" role="status"></p>
         </form>
       </div>
     </div>

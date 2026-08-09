@@ -20,6 +20,24 @@ const {
   formatTimeRangeLabel,
   normalizeTime,
   getServiceDuration,
+  listServices,
+  createService,
+  updateService,
+  deleteService,
+  listTeamMembers,
+  createTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
+  listTestimonials,
+  createTestimonial,
+  updateTestimonial,
+  deleteTestimonial,
+  listBlogPosts,
+  createBlogPost,
+  updateBlogPost,
+  deleteBlogPost,
+  listSettings,
+  setSetting,
 } = require("../db");
 const { requireAdmin, hasValidSession, verifyAdminLogin } = require("../middleware/auth");
 
@@ -71,6 +89,14 @@ router.get("/session", (req, res) => {
     user: { username: req.session.username || "admin" },
   });
 });
+
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 router.use(requireAdmin);
 
@@ -268,6 +294,172 @@ router.patch("/messages/:id/read", (req, res) => {
   }
 
   res.json({ ok: true, id, is_read: isRead ? 1 : 0 });
+});
+
+router.get("/services", (_req, res) => {
+  res.json({ data: listServices() });
+});
+
+router.post("/services", (req, res) => {
+  const name = String(req.body.name || "").trim();
+  if (!name) {
+    return res.status(400).json({ error: "Name is required." });
+  }
+  try {
+    const service = createService({
+      ...req.body,
+      name,
+      slug: slugify(req.body.slug || name),
+    });
+    res.status(201).json({ ok: true, data: service });
+  } catch (err) {
+    res.status(400).json({ error: "Could not create service. Slug may already be in use." });
+  }
+});
+
+router.patch("/services/:id", (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const payload = { ...req.body };
+    if (payload.slug !== undefined) {
+      payload.slug = slugify(payload.slug);
+    }
+    const service = updateService(id, payload);
+    if (!service) {
+      return res.status(404).json({ error: "Service not found." });
+    }
+    res.json({ ok: true, data: service });
+  } catch (err) {
+    res.status(400).json({ error: "Could not update service. Slug may already be in use." });
+  }
+});
+
+router.delete("/services/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!deleteService(id)) {
+    return res.status(404).json({ error: "Service not found." });
+  }
+  res.json({ ok: true, id });
+});
+
+router.get("/team", (_req, res) => {
+  res.json({ data: listTeamMembers() });
+});
+
+router.post("/team", (req, res) => {
+  const name = String(req.body.name || "").trim();
+  if (!name) {
+    return res.status(400).json({ error: "Name is required." });
+  }
+  const member = createTeamMember({ ...req.body, name });
+  res.status(201).json({ ok: true, data: member });
+});
+
+router.patch("/team/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const member = updateTeamMember(id, req.body);
+  if (!member) {
+    return res.status(404).json({ error: "Team member not found." });
+  }
+  res.json({ ok: true, data: member });
+});
+
+router.delete("/team/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!deleteTeamMember(id)) {
+    return res.status(404).json({ error: "Team member not found." });
+  }
+  res.json({ ok: true, id });
+});
+
+router.get("/testimonials", (_req, res) => {
+  res.json({ data: listTestimonials() });
+});
+
+router.post("/testimonials", (req, res) => {
+  const attribution = String(req.body.attribution || "").trim();
+  const quote = String(req.body.quote || "").trim();
+  if (!attribution || !quote) {
+    return res.status(400).json({ error: "Attribution and quote are required." });
+  }
+  const testimonial = createTestimonial({ ...req.body, attribution, quote });
+  res.status(201).json({ ok: true, data: testimonial });
+});
+
+router.patch("/testimonials/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const testimonial = updateTestimonial(id, req.body);
+  if (!testimonial) {
+    return res.status(404).json({ error: "Testimonial not found." });
+  }
+  res.json({ ok: true, data: testimonial });
+});
+
+router.delete("/testimonials/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!deleteTestimonial(id)) {
+    return res.status(404).json({ error: "Testimonial not found." });
+  }
+  res.json({ ok: true, id });
+});
+
+router.get("/blog", (_req, res) => {
+  res.json({ data: listBlogPosts() });
+});
+
+router.post("/blog", (req, res) => {
+  const title = String(req.body.title || "").trim();
+  if (!title) {
+    return res.status(400).json({ error: "Title is required." });
+  }
+  try {
+    const post = createBlogPost({
+      ...req.body,
+      title,
+      slug: slugify(req.body.slug || title),
+    });
+    res.status(201).json({ ok: true, data: post });
+  } catch (err) {
+    res.status(400).json({ error: "Could not create post. Slug may already be in use." });
+  }
+});
+
+router.patch("/blog/:id", (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const payload = { ...req.body };
+    if (payload.slug !== undefined) {
+      payload.slug = slugify(payload.slug);
+    }
+    const post = updateBlogPost(id, payload);
+    if (!post) {
+      return res.status(404).json({ error: "Post not found." });
+    }
+    res.json({ ok: true, data: post });
+  } catch (err) {
+    res.status(400).json({ error: "Could not update post. Slug may already be in use." });
+  }
+});
+
+router.delete("/blog/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!deleteBlogPost(id)) {
+    return res.status(404).json({ error: "Post not found." });
+  }
+  res.json({ ok: true, id });
+});
+
+router.get("/settings", (_req, res) => {
+  res.json({ data: listSettings() });
+});
+
+router.patch("/settings/:key", (req, res) => {
+  const key = String(req.params.key || "").trim();
+  if (!key) {
+    return res.status(400).json({ error: "Setting key is required." });
+  }
+  const value = setSetting(key, req.body.value);
+  res.json({ ok: true, data: { key, value } });
 });
 
 module.exports = router;

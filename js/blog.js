@@ -1,9 +1,6 @@
 "use strict";
 
-const blogFilterButtons = document.querySelectorAll(".blog-filter-btn");
-const blogCards = Array.from(document.querySelectorAll(".blog-card[data-category]"));
-
-function applyBlogFilter(filter) {
+function applyBlogFilter(blogCards, filter) {
   blogCards.forEach((card) => {
     const category = card.dataset.category;
     const show = filter === "all" || category === filter;
@@ -11,7 +8,14 @@ function applyBlogFilter(filter) {
   });
 }
 
-if (blogFilterButtons.length > 0 && blogCards.length > 0) {
+function initBlogFilters() {
+  const blogFilterButtons = document.querySelectorAll(".blog-filter-btn");
+  const blogCards = Array.from(document.querySelectorAll(".blog-card[data-category]"));
+
+  if (blogFilterButtons.length === 0 || blogCards.length === 0) {
+    return;
+  }
+
   blogFilterButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       blogFilterButtons.forEach((b) => {
@@ -22,7 +26,7 @@ if (blogFilterButtons.length > 0 && blogCards.length > 0) {
       btn.classList.add("is-active");
       btn.setAttribute("aria-pressed", "true");
       btn.setAttribute("aria-selected", "true");
-      applyBlogFilter(btn.dataset.filter || "all");
+      applyBlogFilter(blogCards, btn.dataset.filter || "all");
     });
   });
 
@@ -32,3 +36,5 @@ if (blogFilterButtons.length > 0 && blogCards.length > 0) {
     defaultFilter.setAttribute("aria-selected", "true");
   }
 }
+
+window.initBlogFilters = initBlogFilters;

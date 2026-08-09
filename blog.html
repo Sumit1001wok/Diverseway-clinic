@@ -99,17 +99,7 @@
     <section class="blog-section reveal">
       <div class="container">
         <p class="blog-featured-label">Featured article</p>
-        <a class="blog-featured" href="blog/play-based-therapy.html">
-          <div class="blog-featured-media">
-            <img src="assets/images/ai/therapy-session-play.png" width="800" height="500" alt="Therapist engaging a child in play-based therapy" loading="lazy">
-          </div>
-          <div class="blog-featured-copy">
-            <span class="blog-tag blog-tag--behaviour">Behaviour Therapy</span>
-            <h2>Why Play-Based Therapy Works for Children</h2>
-            <p>Structured play builds communication and social skills for children in Kathmandu, Nepal.</p>
-            <p class="blog-card-meta">May 20, 2026 · 2 min read</p>
-          </div>
-        </a>
+        <div id="blog-featured"></div>
       </div>
     </section>
 
@@ -129,77 +119,7 @@
 
     <section class="blog-section reveal">
       <div class="container">
-        <div class="blog-grid reveal-stagger" aria-label="Blog articles">
-          <a class="blog-card" href="blog/understanding-speech-delays.html" data-category="speech">
-            <div class="blog-card-media">
-              <img src="assets/images/ai/therapy-speech-flashcards.png" width="640" height="400" alt="Child using speech therapy flashcards" loading="lazy">
-            </div>
-            <div class="blog-card-body">
-              <span class="blog-tag">Speech Therapy</span>
-              <h3>Understanding Speech Delays in Young Children</h3>
-              <p>Early signs of speech delay and when to see a speech therapist in Kathmandu, Nepal.</p>
-              <p class="blog-card-meta">May 12, 2026 · 2 min read</p>
-            </div>
-          </a>
-
-          <a class="blog-card" href="blog/play-based-therapy.html" data-category="behaviour">
-            <div class="blog-card-media">
-              <img src="assets/images/ai/therapy-session-play.png" width="640" height="400" alt="Play-based therapy session" loading="lazy">
-            </div>
-            <div class="blog-card-body">
-              <span class="blog-tag blog-tag--behaviour">Behaviour Therapy</span>
-              <h3>Why Play-Based Therapy Works for Children</h3>
-              <p>Play-based behaviour therapy for communication, regulation &amp; social skills in Nepal.</p>
-              <p class="blog-card-meta">May 20, 2026 · 2 min read</p>
-            </div>
-          </a>
-
-          <a class="blog-card" href="blog/fine-motor-activities-home.html" data-category="ot">
-            <div class="blog-card-media">
-              <img src="assets/images/ai/therapy-occupational-blocks.png" width="640" height="400" alt="Child building with blocks during occupational therapy" loading="lazy">
-            </div>
-            <div class="blog-card-body">
-              <span class="blog-tag blog-tag--ot">Occupational Therapy</span>
-              <h3>Fine Motor Skills: Simple Activities at Home</h3>
-              <p>Home OT activities for hand strength and coordination — Kathmandu, Nepal.</p>
-              <p class="blog-card-meta">May 8, 2026 · 2 min read</p>
-            </div>
-          </a>
-
-          <a class="blog-card" href="blog/when-to-seek-counselling.html" data-category="wellbeing">
-            <div class="blog-card-media">
-              <img src="assets/images/ai/therapy-behaviour-shapes.png" width="640" height="400" alt="Therapist supporting a child during a learning activity" loading="lazy">
-            </div>
-            <div class="blog-card-body">
-              <span class="blog-tag blog-tag--wellbeing">Wellbeing</span>
-              <h3>When to Seek Professional Counselling</h3>
-              <p>When to seek psychological counselling in Kathmandu — anxiety, stress &amp; family support.</p>
-              <p class="blog-card-meta">April 28, 2026 · 2 min read</p>
-            </div>
-          </a>
-
-          <a class="blog-card" href="blog/voice-therapy-kathmandu.html" data-category="voice">
-            <div class="blog-card-media">
-              <img src="assets/images/ai/therapy-speech-flashcards.png" width="640" height="400" alt="Voice therapy for professionals in Kathmandu Nepal" loading="lazy">
-            </div>
-            <div class="blog-card-body">
-              <span class="blog-tag">Voice Therapy</span>
-              <h3>Voice Therapy for Teachers &amp; Professionals in Nepal</h3>
-              <p>Vocal health and voice therapy for hoarseness and strain — Kathmandu clinic.</p>
-              <p class="blog-card-meta">May 25, 2026 · 2 min read</p>
-            </div>
-          </a>
-
-          <a class="blog-card" href="blog/child-development-milestones.html" data-category="child">
-            <div class="blog-card-media">
-              <img src="assets/images/ai/therapy-occupational-blocks.png" width="640" height="400" alt="Child development milestones guide Nepal" loading="lazy">
-            </div>
-            <div class="blog-card-body">
-              <span class="blog-tag blog-tag--parent">Child Development</span>
-              <h3>Child Development Milestones: What Parents Should Know</h3>
-              <p>Developmental milestones and early support for children in Nepal.</p>
-              <p class="blog-card-meta">May 18, 2026 · 2 min read</p>
-        </div>
+        <div class="blog-grid reveal-stagger" aria-label="Blog articles" id="blog-grid"></div>
       </div>
     </section>
 
@@ -262,5 +182,6 @@
   <script src="js/seo-schema.js"></script>
   <script src="js/main.js"></script>
   <script src="js/blog.js"></script>
+  <script src="js/content.js"></script>
 </body>
 </html>

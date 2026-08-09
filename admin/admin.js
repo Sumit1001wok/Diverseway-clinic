@@ -33,6 +33,16 @@ const availabilityError = document.getElementById("availability-error");
 const addAvailabilitySlotBtn = document.getElementById("add-availability-slot");
 const addStandardHoursBtn = document.getElementById("add-standard-hours");
 const refreshAvailabilityBtn = document.getElementById("refresh-availability");
+const contentModal = document.getElementById("content-modal");
+const contentModalTitle = document.getElementById("content-modal-title");
+const contentModalEyebrow = document.getElementById("content-modal-eyebrow");
+const contentModalFields = document.getElementById("content-modal-fields");
+const contentManageForm = document.getElementById("content-manage-form");
+const contentModalDeleteBtn = document.getElementById("content-modal-delete");
+const contentModalError = document.getElementById("content-modal-error");
+const settingsForm = document.getElementById("settings-form");
+const settingsError = document.getElementById("settings-error");
+const settingsSuccess = document.getElementById("settings-success");
 
 const WHATSAPP_PHONE = "9779845366417";
 const STATUS_LABELS = {
@@ -48,6 +58,9 @@ let activeStatusFilter = "all";
 let activeBookingId = null;
 let searchTimer = null;
 let availabilityRows = [];
+const contentData = { services: [], team: [], testimonials: [], blog: [] };
+let activeContentEntity = null;
+let activeContentId = null;
 
 const fetchOptions = {
   credentials: "same-origin",
@@ -137,10 +150,10 @@ function renderStats(bookings, messages) {
   const unread = messages.filter((m) => !m.is_read).length;
 
   statsEl.innerHTML = `
-    <div class="stat-card"><strong>${bookings.length}</strong><span>Total bookings</span></div>
-    <div class="stat-card"><strong>${pending}</strong><span>Pending</span></div>
-    <div class="stat-card"><strong>${confirmed}</strong><span>Confirmed</span></div>
-    <div class="stat-card"><strong>${unread}</strong><span>Unread messages</span></div>
+    <article class="stat-item"><h3>${bookings.length}</h3><p>Total bookings</p></article>
+    <article class="stat-item"><h3>${pending}</h3><p>Pending</p></article>
+    <article class="stat-item"><h3>${confirmed}</h3><p>Confirmed</p></article>
+    <article class="stat-item"><h3>${unread}</h3><p>Unread messages</p></article>
   `;
 }
 
@@ -400,7 +413,338 @@ async function loadDashboard() {
   renderBookingTable();
   renderMessages(allMessages);
   await loadAvailability();
+  await Promise.all([loadAllContent(), loadSettings()]);
 }
+
+const CONTENT_ENTITIES = {
+  services: {
+    apiPath: "/api/admin/services",
+    label: "service",
+    columns: [
+      { render: (row) => escapeHtml(row.name) },
+      { render: (row) => row.sort_order },
+      { render: (row) => (row.is_active ? "Yes" : "No") },
+    ],
+    fields: [
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "slug", label: "Slug (auto from name if blank)", type: "text" },
+      { key: "short_description", label: "Short description (homepage card)", type: "textarea" },
+      { key: "description", label: "Full description (services page)", type: "textarea" },
+      { key: "photo_url", label: "Photo path", type: "text" },
+      { key: "icon_path", label: "Card icon (SVG path data)", type: "text" },
+      { key: "detail_icon_path", label: "Detail icon (SVG path data)", type: "text" },
+      { key: "accent_class", label: "Accent class", type: "text" },
+      { key: "treat_list", label: "What we treat (one per line)", type: "list" },
+      { key: "whatsapp_message", label: "WhatsApp message", type: "text" },
+      { key: "sort_order", label: "Sort order", type: "number", default: 0 },
+      { key: "is_active", label: "Active", type: "checkbox", default: true },
+    ],
+  },
+  team: {
+    apiPath: "/api/admin/team",
+    label: "team member",
+    columns: [
+      { render: (row) => escapeHtml(row.name) },
+      { render: (row) => escapeHtml(row.title || "") },
+      { render: (row) => row.sort_order },
+      { render: (row) => (row.is_active ? "Yes" : "No") },
+    ],
+    fields: [
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "title", label: "Title", type: "text" },
+      { key: "bio", label: "Full bio (About page)", type: "textarea" },
+      { key: "bio_short", label: "Short bio (homepage card)", type: "textarea" },
+      { key: "photo_url", label: "Photo path (blank = no-photo card)", type: "text" },
+      { key: "whatsapp_message", label: "WhatsApp message", type: "text" },
+      { key: "sort_order", label: "Sort order", type: "number", default: 0 },
+      { key: "is_active", label: "Active", type: "checkbox", default: true },
+    ],
+  },
+  testimonials: {
+    apiPath: "/api/admin/testimonials",
+    label: "testimonial",
+    columns: [
+      { render: (row) => escapeHtml(row.attribution) },
+      { render: (row) => row.stars },
+      { render: (row) => row.sort_order },
+      { render: (row) => (row.is_active ? "Yes" : "No") },
+    ],
+    fields: [
+      { key: "attribution", label: "Attribution", type: "text", required: true },
+      { key: "quote", label: "Quote", type: "textarea", required: true },
+      { key: "avatar_url", label: "Avatar photo path", type: "text" },
+      { key: "stars", label: "Stars (1-5)", type: "number", default: 5 },
+      { key: "sort_order", label: "Sort order", type: "number", default: 0 },
+      { key: "is_active", label: "Active", type: "checkbox", default: true },
+    ],
+  },
+  blog: {
+    apiPath: "/api/admin/blog",
+    label: "post",
+    columns: [
+      { render: (row) => escapeHtml(row.title) },
+      { render: (row) => escapeHtml(row.category_label || "") },
+      { render: (row) => formatShortDate(row.published_at) },
+      { render: (row) => escapeHtml(row.status) },
+      { render: (row) => (row.is_featured ? "Yes" : "No") },
+    ],
+    fields: [
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "slug", label: "Slug (auto from title if blank)", type: "text" },
+      { key: "excerpt", label: "Excerpt", type: "textarea" },
+      { key: "category", label: "Category key (e.g. speech)", type: "text" },
+      { key: "category_label", label: "Category label (e.g. Speech Therapy)", type: "text" },
+      { key: "tag_class", label: "Tag CSS modifier (e.g. blog-tag--behaviour)", type: "text" },
+      { key: "hero_image_url", label: "Hero image path", type: "text" },
+      { key: "hero_image_alt", label: "Hero image alt text", type: "text" },
+      { key: "body_html", label: "Body (HTML)", type: "textarea-large", required: true },
+      { key: "meta_description", label: "Meta description", type: "textarea" },
+      { key: "keywords", label: "Keywords (comma separated)", type: "text" },
+      { key: "read_time", label: "Read time", type: "text", default: "2 min read" },
+      { key: "published_at", label: "Published date", type: "date" },
+      { key: "related_slugs", label: "Related post slugs (one per line)", type: "list" },
+      { key: "whatsapp_cta_heading", label: "WhatsApp CTA heading", type: "text" },
+      { key: "whatsapp_cta_text", label: "WhatsApp CTA subtext", type: "text" },
+      { key: "whatsapp_cta_message", label: "WhatsApp CTA message", type: "text" },
+      { key: "is_featured", label: "Featured on blog listing", type: "checkbox" },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        default: "draft",
+        options: [
+          ["draft", "Draft"],
+          ["published", "Published"],
+        ],
+      },
+    ],
+  },
+};
+
+function contentFieldHtml(field, value) {
+  const id = `content-field-${field.key}`;
+
+  if (field.type === "textarea" || field.type === "textarea-large") {
+    const rows = field.type === "textarea-large" ? 10 : 3;
+    return `<label class="field field-full"><span>${field.label}</span><textarea id="${id}" name="${field.key}" rows="${rows}">${escapeHtml(value || "")}</textarea></label>`;
+  }
+
+  if (field.type === "list") {
+    const text = Array.isArray(value) ? value.join("\n") : "";
+    return `<label class="field field-full"><span>${field.label}</span><textarea id="${id}" name="${field.key}" rows="4">${escapeHtml(text)}</textarea></label>`;
+  }
+
+  if (field.type === "checkbox") {
+    return `<label class="field field-checkbox"><span>${field.label}</span><input type="checkbox" id="${id}" name="${field.key}" ${value ? "checked" : ""}></label>`;
+  }
+
+  if (field.type === "select") {
+    const options = field.options
+      .map(([val, label]) => `<option value="${val}" ${value === val ? "selected" : ""}>${label}</option>`)
+      .join("");
+    return `<label class="field"><span>${field.label}</span><select id="${id}" name="${field.key}">${options}</select></label>`;
+  }
+
+  if (field.type === "number") {
+    return `<label class="field"><span>${field.label}</span><input type="number" id="${id}" name="${field.key}" value="${value ?? ""}"></label>`;
+  }
+
+  if (field.type === "date") {
+    return `<label class="field"><span>${field.label}</span><input type="date" id="${id}" name="${field.key}" value="${value || ""}"></label>`;
+  }
+
+  return `<label class="field"><span>${field.label}</span><input type="text" id="${id}" name="${field.key}" value="${escapeHtml(value || "")}"></label>`;
+}
+
+function renderContentTable(entityKey) {
+  const config = CONTENT_ENTITIES[entityKey];
+  const tbody = document.getElementById(`${entityKey}-body`);
+  if (!tbody) {
+    return;
+  }
+
+  const rows = contentData[entityKey] || [];
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${config.columns.length + 1}" class="empty">No ${config.label}s yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows
+    .map(
+      (row) => `
+    <tr>
+      ${config.columns.map((col) => `<td>${col.render(row)}</td>`).join("")}
+      <td><button type="button" class="btn-outline btn-sm" data-edit-content="${entityKey}" data-id="${row.id}">Edit</button></td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function loadContentEntity(entityKey) {
+  const config = CONTENT_ENTITIES[entityKey];
+  const res = await apiFetch(config.apiPath);
+  contentData[entityKey] = res.data;
+  renderContentTable(entityKey);
+}
+
+async function loadAllContent() {
+  await Promise.all(Object.keys(CONTENT_ENTITIES).map((key) => loadContentEntity(key)));
+}
+
+function openContentModal(entityKey, id) {
+  const config = CONTENT_ENTITIES[entityKey];
+  const row = id ? (contentData[entityKey] || []).find((r) => r.id === id) : null;
+
+  activeContentEntity = entityKey;
+  activeContentId = id || null;
+
+  contentModalTitle.textContent = id ? `Edit ${config.label}` : `Add ${config.label}`;
+  contentModalEyebrow.textContent = config.label.toUpperCase();
+  contentModalFields.innerHTML = config.fields
+    .map((field) => contentFieldHtml(field, row ? row[field.key] : field.default))
+    .join("");
+  contentModalDeleteBtn.classList.toggle("hidden", !id);
+  contentModalError.textContent = "";
+  contentModal.classList.remove("hidden");
+  contentModal.setAttribute("aria-hidden", "false");
+}
+
+function closeContentModal() {
+  contentModal.classList.add("hidden");
+  contentModal.setAttribute("aria-hidden", "true");
+  activeContentEntity = null;
+  activeContentId = null;
+}
+
+function readContentForm() {
+  const config = CONTENT_ENTITIES[activeContentEntity];
+  const payload = {};
+
+  config.fields.forEach((field) => {
+    const el = document.getElementById(`content-field-${field.key}`);
+    if (!el) {
+      return;
+    }
+
+    if (field.type === "checkbox") {
+      payload[field.key] = el.checked;
+    } else if (field.type === "list") {
+      payload[field.key] = el.value
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    } else if (field.type === "number") {
+      payload[field.key] = el.value === "" ? 0 : Number(el.value);
+    } else {
+      payload[field.key] = el.value.trim();
+    }
+  });
+
+  return payload;
+}
+
+document.addEventListener("click", (event) => {
+  const addBtn = event.target.closest("[data-add-content]");
+  if (addBtn) {
+    openContentModal(addBtn.dataset.addContent, null);
+    return;
+  }
+
+  const editBtn = event.target.closest("[data-edit-content]");
+  if (editBtn) {
+    openContentModal(editBtn.dataset.editContent, Number(editBtn.dataset.id));
+  }
+});
+
+contentModal?.querySelectorAll("[data-close-content-modal]").forEach((el) => {
+  el.addEventListener("click", closeContentModal);
+});
+
+contentManageForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!activeContentEntity) {
+    return;
+  }
+
+  const config = CONTENT_ENTITIES[activeContentEntity];
+  contentModalError.textContent = "";
+
+  try {
+    const payload = readContentForm();
+    if (activeContentId) {
+      await apiFetch(`${config.apiPath}/${activeContentId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await apiFetch(config.apiPath, { method: "POST", body: JSON.stringify(payload) });
+    }
+
+    await loadContentEntity(activeContentEntity);
+    closeContentModal();
+  } catch (err) {
+    contentModalError.textContent = err.message;
+  }
+});
+
+contentModalDeleteBtn?.addEventListener("click", async () => {
+  if (!activeContentEntity || !activeContentId) {
+    return;
+  }
+
+  const config = CONTENT_ENTITIES[activeContentEntity];
+  if (!window.confirm(`Delete this ${config.label}? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    await apiFetch(`${config.apiPath}/${activeContentId}`, { method: "DELETE" });
+    await loadContentEntity(activeContentEntity);
+    closeContentModal();
+  } catch (err) {
+    contentModalError.textContent = err.message;
+  }
+});
+
+async function loadSettings() {
+  const res = await apiFetch("/api/admin/settings");
+  const hours = res.data.clinic_hours || {};
+  const weekdayLabel = document.getElementById("settings-weekday-label");
+  const weekdayHours = document.getElementById("settings-weekday-hours");
+  const weekendLabel = document.getElementById("settings-weekend-label");
+  const weekendHours = document.getElementById("settings-weekend-hours");
+
+  if (weekdayLabel) weekdayLabel.value = hours.weekday_label || "";
+  if (weekdayHours) weekdayHours.value = hours.weekday_hours || "";
+  if (weekendLabel) weekendLabel.value = hours.weekend_label || "";
+  if (weekendHours) weekendHours.value = hours.weekend_hours || "";
+}
+
+settingsForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  settingsError.textContent = "";
+  settingsSuccess.hidden = true;
+
+  try {
+    const value = {
+      weekday_label: document.getElementById("settings-weekday-label").value.trim(),
+      weekday_hours: document.getElementById("settings-weekday-hours").value.trim(),
+      weekend_label: document.getElementById("settings-weekend-label").value.trim(),
+      weekend_hours: document.getElementById("settings-weekend-hours").value.trim(),
+    };
+
+    await apiFetch("/api/admin/settings/clinic_hours", {
+      method: "PATCH",
+      body: JSON.stringify({ value }),
+    });
+
+    settingsSuccess.hidden = false;
+    settingsSuccess.textContent = "Saved.";
+  } catch (err) {
+    settingsError.textContent = err.message;
+  }
+});
 
 function showDashboard(username) {
   if (adminUserEl && username) {
@@ -408,12 +752,16 @@ function showDashboard(username) {
   }
   loginScreen.classList.add("hidden");
   dashboard.classList.remove("hidden");
+  logoutBtn?.classList.remove("hidden");
+  document.querySelector(".admin-site-header")?.classList.add("is-scrolled");
 }
 
 function showLogin() {
   dashboard.classList.add("hidden");
   loginScreen.classList.remove("hidden");
+  logoutBtn?.classList.add("hidden");
   closeBookingModal();
+  closeContentModal();
 }
 
 bookingFilters?.addEventListener("click", (event) => {
@@ -551,8 +899,14 @@ bookingModal?.querySelectorAll("[data-close-modal]").forEach((el) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !bookingModal.classList.contains("hidden")) {
+  if (event.key !== "Escape") {
+    return;
+  }
+  if (!bookingModal.classList.contains("hidden")) {
     closeBookingModal();
+  }
+  if (!contentModal.classList.contains("hidden")) {
+    closeContentModal();
   }
 });
 

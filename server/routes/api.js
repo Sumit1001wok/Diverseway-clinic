@@ -7,6 +7,11 @@ const {
   getDbInfo,
   listAvailableStartTimes,
   getServiceDuration,
+  listServices,
+  listTeamMembers,
+  listTestimonials,
+  listBlogPosts,
+  listSettings,
 } = require("../db");
 
 const router = express.Router();
@@ -21,6 +26,34 @@ router.get("/health", (_req, res) => {
     service: "diverse-way-clinic-api",
     database: getDbInfo(),
   });
+});
+
+router.get("/services", (_req, res) => {
+  res.json({ data: listServices({ activeOnly: true }) });
+});
+
+router.get("/team", (_req, res) => {
+  res.json({ data: listTeamMembers({ activeOnly: true }) });
+});
+
+router.get("/testimonials", (_req, res) => {
+  res.json({ data: listTestimonials({ activeOnly: true }) });
+});
+
+router.get("/blog", (req, res) => {
+  const category = trim(req.query.category);
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+  res.json({
+    data: listBlogPosts({
+      category: category || undefined,
+      publishedOnly: true,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    }),
+  });
+});
+
+router.get("/settings", (_req, res) => {
+  res.json({ data: listSettings() });
 });
 
 router.get("/availability", (req, res) => {

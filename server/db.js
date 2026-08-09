@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
+const { SERVICES, TEAM_MEMBERS, TESTIMONIALS, BLOG_POSTS, SETTINGS } = require("./seedContent");
 
 const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "clinic.db");
@@ -66,6 +67,81 @@ function initSchema() {
       UNIQUE(slot_date, slot_time),
       FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL
     );
+
+    CREATE TABLE IF NOT EXISTS services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      short_description TEXT,
+      description TEXT,
+      icon_path TEXT,
+      detail_icon_path TEXT,
+      photo_url TEXT,
+      accent_class TEXT,
+      treat_list TEXT,
+      whatsapp_message TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS team_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      title TEXT,
+      bio TEXT,
+      bio_short TEXT,
+      photo_url TEXT,
+      whatsapp_message TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS testimonials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      attribution TEXT NOT NULL,
+      quote TEXT NOT NULL,
+      avatar_url TEXT,
+      stars INTEGER NOT NULL DEFAULT 5,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS blog_posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      excerpt TEXT,
+      category TEXT,
+      category_label TEXT,
+      tag_class TEXT,
+      hero_image_url TEXT,
+      hero_image_alt TEXT,
+      body_html TEXT,
+      meta_description TEXT,
+      keywords TEXT,
+      read_time TEXT,
+      published_at TEXT,
+      updated_at TEXT,
+      is_featured INTEGER NOT NULL DEFAULT 0,
+      related_slugs TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      whatsapp_cta_heading TEXT,
+      whatsapp_cta_text TEXT,
+      whatsapp_cta_message TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT
+    );
   `);
 
   migrateBookingColumns();
@@ -76,6 +152,11 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(reference);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_availability_date ON availability_slots(slot_date);
+    CREATE INDEX IF NOT EXISTS idx_services_sort ON services(sort_order);
+    CREATE INDEX IF NOT EXISTS idx_team_sort ON team_members(sort_order);
+    CREATE INDEX IF NOT EXISTS idx_testimonials_sort ON testimonials(sort_order);
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_published ON blog_posts(published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_status ON blog_posts(status);
   `);
 }
 
@@ -263,8 +344,98 @@ function migrateLegacyJson() {
   });
 }
 
+function seedContentDefaults() {
+  const now = new Date().toISOString();
+
+  if (db.prepare("SELECT COUNT(*) AS count FROM services").get().count === 0) {
+    const insert = db.prepare(`
+      INSERT INTO services (
+        slug, name, short_description, description, icon_path, detail_icon_path,
+        photo_url, accent_class, treat_list, whatsapp_message, sort_order, created_at, updated_at
+      ) VALUES (
+        @slug, @name, @short_description, @description, @icon_path, @detail_icon_path,
+        @photo_url, @accent_class, @treat_list, @whatsapp_message, @sort_order, @created_at, @updated_at
+      )
+    `);
+    const seed = db.transaction((rows) => {
+      rows.forEach((row) =>
+        insert.run({
+          ...row,
+          treat_list: JSON.stringify(row.treat_list || []),
+          created_at: now,
+          updated_at: now,
+        })
+      );
+    });
+    seed(SERVICES);
+  }
+
+  if (db.prepare("SELECT COUNT(*) AS count FROM team_members").get().count === 0) {
+    const insert = db.prepare(`
+      INSERT INTO team_members (
+        name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, created_at, updated_at
+      ) VALUES (
+        @name, @title, @bio, @bio_short, @photo_url, @whatsapp_message, @sort_order, @created_at, @updated_at
+      )
+    `);
+    const seed = db.transaction((rows) => {
+      rows.forEach((row) => insert.run({ ...row, created_at: now, updated_at: now }));
+    });
+    seed(TEAM_MEMBERS);
+  }
+
+  if (db.prepare("SELECT COUNT(*) AS count FROM testimonials").get().count === 0) {
+    const insert = db.prepare(`
+      INSERT INTO testimonials (
+        attribution, quote, avatar_url, stars, sort_order, created_at, updated_at
+      ) VALUES (
+        @attribution, @quote, @avatar_url, @stars, @sort_order, @created_at, @updated_at
+      )
+    `);
+    const seed = db.transaction((rows) => {
+      rows.forEach((row) => insert.run({ ...row, created_at: now, updated_at: now }));
+    });
+    seed(TESTIMONIALS);
+  }
+
+  if (db.prepare("SELECT COUNT(*) AS count FROM blog_posts").get().count === 0) {
+    const insert = db.prepare(`
+      INSERT INTO blog_posts (
+        slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
+        body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
+        related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
+      ) VALUES (
+        @slug, @title, @excerpt, @category, @category_label, @tag_class, @hero_image_url, @hero_image_alt,
+        @body_html, @meta_description, @keywords, @read_time, @published_at, @updated_at, @is_featured,
+        @related_slugs, @status, @whatsapp_cta_heading, @whatsapp_cta_text, @whatsapp_cta_message, @created_at
+      )
+    `);
+    const seed = db.transaction((rows) => {
+      rows.forEach((row) =>
+        insert.run({
+          ...row,
+          related_slugs: JSON.stringify(row.related_slugs || []),
+          created_at: now,
+        })
+      );
+    });
+    seed(BLOG_POSTS);
+  }
+
+  if (db.prepare("SELECT COUNT(*) AS count FROM site_settings").get().count === 0) {
+    const insert = db.prepare(
+      "INSERT INTO site_settings (key, value, updated_at) VALUES (@key, @value, @updated_at)"
+    );
+    const seed = db.transaction((entries) => {
+      entries.forEach(([key, value]) => insert.run({ key, value: JSON.stringify(value), updated_at: now }));
+    });
+    seed(Object.entries(SETTINGS));
+  }
+}
+
 initSchema();
 migrateLegacyJson();
+seedContentDefaults();
 
 function nowIso() {
   return new Date().toISOString();
@@ -810,6 +981,395 @@ function getDbInfo() {
   };
 }
 
+function parseJsonField(value, fallback) {
+  if (!value) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function withService(row) {
+  if (!row) {
+    return null;
+  }
+  return { ...row, treat_list: parseJsonField(row.treat_list, []) };
+}
+
+function withBlogPost(row) {
+  if (!row) {
+    return null;
+  }
+  return { ...row, related_slugs: parseJsonField(row.related_slugs, []) };
+}
+
+function listServices({ activeOnly = false } = {}) {
+  const sql = activeOnly
+    ? "SELECT * FROM services WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
+    : "SELECT * FROM services ORDER BY sort_order ASC, id ASC";
+  return db.prepare(sql).all().map(withService);
+}
+
+function getServiceBySlug(slug) {
+  return withService(db.prepare("SELECT * FROM services WHERE slug = ?").get(slug));
+}
+
+function getServiceById(id) {
+  return withService(db.prepare("SELECT * FROM services WHERE id = ?").get(id));
+}
+
+function createService(payload) {
+  const now = nowIso();
+  const result = db
+    .prepare(
+      `
+      INSERT INTO services (
+        slug, name, short_description, description, icon_path, detail_icon_path,
+        photo_url, accent_class, treat_list, whatsapp_message, sort_order, is_active, created_at, updated_at
+      ) VALUES (
+        @slug, @name, @short_description, @description, @icon_path, @detail_icon_path,
+        @photo_url, @accent_class, @treat_list, @whatsapp_message, @sort_order, @is_active, @created_at, @updated_at
+      )
+    `
+    )
+    .run({
+      slug: payload.slug,
+      name: payload.name,
+      short_description: payload.short_description || null,
+      description: payload.description || null,
+      icon_path: payload.icon_path || null,
+      detail_icon_path: payload.detail_icon_path || null,
+      photo_url: payload.photo_url || null,
+      accent_class: payload.accent_class || null,
+      treat_list: JSON.stringify(payload.treat_list || []),
+      whatsapp_message: payload.whatsapp_message || null,
+      sort_order: Number(payload.sort_order) || 0,
+      is_active: payload.is_active === false ? 0 : 1,
+      created_at: now,
+      updated_at: now,
+    });
+  return getServiceById(result.lastInsertRowid);
+}
+
+function updateService(id, payload) {
+  const existing = getServiceById(id);
+  if (!existing) {
+    return null;
+  }
+  const merged = { ...existing, ...payload };
+  db.prepare(
+    `
+    UPDATE services SET
+      slug = @slug, name = @name, short_description = @short_description, description = @description,
+      icon_path = @icon_path, detail_icon_path = @detail_icon_path, photo_url = @photo_url,
+      accent_class = @accent_class, treat_list = @treat_list, whatsapp_message = @whatsapp_message,
+      sort_order = @sort_order, is_active = @is_active, updated_at = @updated_at
+    WHERE id = @id
+  `
+  ).run({
+    id,
+    slug: merged.slug,
+    name: merged.name,
+    short_description: merged.short_description || null,
+    description: merged.description || null,
+    icon_path: merged.icon_path || null,
+    detail_icon_path: merged.detail_icon_path || null,
+    photo_url: merged.photo_url || null,
+    accent_class: merged.accent_class || null,
+    treat_list: JSON.stringify(payload.treat_list !== undefined ? payload.treat_list : merged.treat_list || []),
+    whatsapp_message: merged.whatsapp_message || null,
+    sort_order: Number(merged.sort_order) || 0,
+    is_active: merged.is_active === false || merged.is_active === 0 ? 0 : 1,
+    updated_at: nowIso(),
+  });
+  return getServiceById(id);
+}
+
+function deleteService(id) {
+  return db.prepare("DELETE FROM services WHERE id = ?").run(id).changes > 0;
+}
+
+function listTeamMembers({ activeOnly = false } = {}) {
+  const sql = activeOnly
+    ? "SELECT * FROM team_members WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
+    : "SELECT * FROM team_members ORDER BY sort_order ASC, id ASC";
+  return db.prepare(sql).all();
+}
+
+function getTeamMemberById(id) {
+  return db.prepare("SELECT * FROM team_members WHERE id = ?").get(id);
+}
+
+function createTeamMember(payload) {
+  const now = nowIso();
+  const result = db
+    .prepare(
+      `
+      INSERT INTO team_members (
+        name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, is_active, created_at, updated_at
+      ) VALUES (
+        @name, @title, @bio, @bio_short, @photo_url, @whatsapp_message, @sort_order, @is_active, @created_at, @updated_at
+      )
+    `
+    )
+    .run({
+      name: payload.name,
+      title: payload.title || null,
+      bio: payload.bio || null,
+      bio_short: payload.bio_short || null,
+      photo_url: payload.photo_url || null,
+      whatsapp_message: payload.whatsapp_message || null,
+      sort_order: Number(payload.sort_order) || 0,
+      is_active: payload.is_active === false ? 0 : 1,
+      created_at: now,
+      updated_at: now,
+    });
+  return getTeamMemberById(result.lastInsertRowid);
+}
+
+function updateTeamMember(id, payload) {
+  const existing = getTeamMemberById(id);
+  if (!existing) {
+    return null;
+  }
+  const merged = { ...existing, ...payload };
+  db.prepare(
+    `
+    UPDATE team_members SET
+      name = @name, title = @title, bio = @bio, bio_short = @bio_short, photo_url = @photo_url,
+      whatsapp_message = @whatsapp_message, sort_order = @sort_order, is_active = @is_active, updated_at = @updated_at
+    WHERE id = @id
+  `
+  ).run({
+    id,
+    name: merged.name,
+    title: merged.title || null,
+    bio: merged.bio || null,
+    bio_short: merged.bio_short || null,
+    photo_url: merged.photo_url || null,
+    whatsapp_message: merged.whatsapp_message || null,
+    sort_order: Number(merged.sort_order) || 0,
+    is_active: merged.is_active === false || merged.is_active === 0 ? 0 : 1,
+    updated_at: nowIso(),
+  });
+  return getTeamMemberById(id);
+}
+
+function deleteTeamMember(id) {
+  return db.prepare("DELETE FROM team_members WHERE id = ?").run(id).changes > 0;
+}
+
+function listTestimonials({ activeOnly = false } = {}) {
+  const sql = activeOnly
+    ? "SELECT * FROM testimonials WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
+    : "SELECT * FROM testimonials ORDER BY sort_order ASC, id ASC";
+  return db.prepare(sql).all();
+}
+
+function getTestimonialById(id) {
+  return db.prepare("SELECT * FROM testimonials WHERE id = ?").get(id);
+}
+
+function createTestimonial(payload) {
+  const now = nowIso();
+  const result = db
+    .prepare(
+      `
+      INSERT INTO testimonials (attribution, quote, avatar_url, stars, sort_order, is_active, created_at, updated_at)
+      VALUES (@attribution, @quote, @avatar_url, @stars, @sort_order, @is_active, @created_at, @updated_at)
+    `
+    )
+    .run({
+      attribution: payload.attribution,
+      quote: payload.quote,
+      avatar_url: payload.avatar_url || null,
+      stars: Number(payload.stars) || 5,
+      sort_order: Number(payload.sort_order) || 0,
+      is_active: payload.is_active === false ? 0 : 1,
+      created_at: now,
+      updated_at: now,
+    });
+  return getTestimonialById(result.lastInsertRowid);
+}
+
+function updateTestimonial(id, payload) {
+  const existing = getTestimonialById(id);
+  if (!existing) {
+    return null;
+  }
+  const merged = { ...existing, ...payload };
+  db.prepare(
+    `
+    UPDATE testimonials SET
+      attribution = @attribution, quote = @quote, avatar_url = @avatar_url, stars = @stars,
+      sort_order = @sort_order, is_active = @is_active, updated_at = @updated_at
+    WHERE id = @id
+  `
+  ).run({
+    id,
+    attribution: merged.attribution,
+    quote: merged.quote,
+    avatar_url: merged.avatar_url || null,
+    stars: Number(merged.stars) || 5,
+    sort_order: Number(merged.sort_order) || 0,
+    is_active: merged.is_active === false || merged.is_active === 0 ? 0 : 1,
+    updated_at: nowIso(),
+  });
+  return getTestimonialById(id);
+}
+
+function deleteTestimonial(id) {
+  return db.prepare("DELETE FROM testimonials WHERE id = ?").run(id).changes > 0;
+}
+
+function listBlogPosts({ category, publishedOnly = false, limit } = {}) {
+  let sql = "SELECT * FROM blog_posts WHERE 1=1";
+  const params = {};
+
+  if (publishedOnly) {
+    sql += " AND status = 'published'";
+  }
+  if (category) {
+    sql += " AND category = @category";
+    params.category = category;
+  }
+
+  sql += " ORDER BY datetime(published_at) DESC, id DESC";
+
+  if (limit) {
+    sql += " LIMIT @limit";
+    params.limit = Number(limit);
+  }
+
+  return db.prepare(sql).all(params).map(withBlogPost);
+}
+
+function getBlogPostBySlug(slug) {
+  return withBlogPost(db.prepare("SELECT * FROM blog_posts WHERE slug = ?").get(slug));
+}
+
+function getBlogPostById(id) {
+  return withBlogPost(db.prepare("SELECT * FROM blog_posts WHERE id = ?").get(id));
+}
+
+function createBlogPost(payload) {
+  const now = nowIso();
+  const result = db
+    .prepare(
+      `
+      INSERT INTO blog_posts (
+        slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
+        body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
+        related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
+      ) VALUES (
+        @slug, @title, @excerpt, @category, @category_label, @tag_class, @hero_image_url, @hero_image_alt,
+        @body_html, @meta_description, @keywords, @read_time, @published_at, @updated_at, @is_featured,
+        @related_slugs, @status, @whatsapp_cta_heading, @whatsapp_cta_text, @whatsapp_cta_message, @created_at
+      )
+    `
+    )
+    .run({
+      slug: payload.slug,
+      title: payload.title,
+      excerpt: payload.excerpt || null,
+      category: payload.category || null,
+      category_label: payload.category_label || null,
+      tag_class: payload.tag_class || "",
+      hero_image_url: payload.hero_image_url || null,
+      hero_image_alt: payload.hero_image_alt || null,
+      body_html: payload.body_html || "",
+      meta_description: payload.meta_description || null,
+      keywords: payload.keywords || null,
+      read_time: payload.read_time || "2 min read",
+      published_at: payload.published_at || now,
+      updated_at: now,
+      is_featured: payload.is_featured ? 1 : 0,
+      related_slugs: JSON.stringify(payload.related_slugs || []),
+      status: payload.status || "draft",
+      whatsapp_cta_heading: payload.whatsapp_cta_heading || null,
+      whatsapp_cta_text: payload.whatsapp_cta_text || null,
+      whatsapp_cta_message: payload.whatsapp_cta_message || null,
+      created_at: now,
+    });
+  return getBlogPostById(result.lastInsertRowid);
+}
+
+function updateBlogPost(id, payload) {
+  const existing = getBlogPostById(id);
+  if (!existing) {
+    return null;
+  }
+  const merged = { ...existing, ...payload };
+  db.prepare(
+    `
+    UPDATE blog_posts SET
+      slug = @slug, title = @title, excerpt = @excerpt, category = @category, category_label = @category_label,
+      tag_class = @tag_class, hero_image_url = @hero_image_url, hero_image_alt = @hero_image_alt,
+      body_html = @body_html, meta_description = @meta_description, keywords = @keywords, read_time = @read_time,
+      published_at = @published_at, updated_at = @updated_at, is_featured = @is_featured,
+      related_slugs = @related_slugs, status = @status, whatsapp_cta_heading = @whatsapp_cta_heading,
+      whatsapp_cta_text = @whatsapp_cta_text, whatsapp_cta_message = @whatsapp_cta_message
+    WHERE id = @id
+  `
+  ).run({
+    id,
+    slug: merged.slug,
+    title: merged.title,
+    excerpt: merged.excerpt || null,
+    category: merged.category || null,
+    category_label: merged.category_label || null,
+    tag_class: merged.tag_class || "",
+    hero_image_url: merged.hero_image_url || null,
+    hero_image_alt: merged.hero_image_alt || null,
+    body_html: merged.body_html || "",
+    meta_description: merged.meta_description || null,
+    keywords: merged.keywords || null,
+    read_time: merged.read_time || "2 min read",
+    published_at: merged.published_at || nowIso(),
+    updated_at: nowIso(),
+    is_featured: merged.is_featured ? 1 : 0,
+    related_slugs: JSON.stringify(
+      payload.related_slugs !== undefined ? payload.related_slugs : merged.related_slugs || []
+    ),
+    status: merged.status || "draft",
+    whatsapp_cta_heading: merged.whatsapp_cta_heading || null,
+    whatsapp_cta_text: merged.whatsapp_cta_text || null,
+    whatsapp_cta_message: merged.whatsapp_cta_message || null,
+  });
+  return getBlogPostById(id);
+}
+
+function deleteBlogPost(id) {
+  return db.prepare("DELETE FROM blog_posts WHERE id = ?").run(id).changes > 0;
+}
+
+function getSetting(key) {
+  const row = db.prepare("SELECT value FROM site_settings WHERE key = ?").get(key);
+  return row ? parseJsonField(row.value, null) : null;
+}
+
+function listSettings() {
+  const rows = db.prepare("SELECT key, value FROM site_settings").all();
+  const settings = {};
+  rows.forEach((row) => {
+    settings[row.key] = parseJsonField(row.value, null);
+  });
+  return settings;
+}
+
+function setSetting(key, value) {
+  db.prepare(
+    `
+    INSERT INTO site_settings (key, value, updated_at) VALUES (@key, @value, @updated_at)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `
+  ).run({ key, value: JSON.stringify(value), updated_at: nowIso() });
+  return getSetting(key);
+}
+
 module.exports = {
   createBooking,
   createContact,
@@ -832,4 +1392,29 @@ module.exports = {
   normalizeTime,
   getServiceDuration,
   SERVICE_DURATIONS,
+  listServices,
+  getServiceBySlug,
+  getServiceById,
+  createService,
+  updateService,
+  deleteService,
+  listTeamMembers,
+  getTeamMemberById,
+  createTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
+  listTestimonials,
+  getTestimonialById,
+  createTestimonial,
+  updateTestimonial,
+  deleteTestimonial,
+  listBlogPosts,
+  getBlogPostBySlug,
+  getBlogPostById,
+  createBlogPost,
+  updateBlogPost,
+  deleteBlogPost,
+  getSetting,
+  listSettings,
+  setSetting,
 };
