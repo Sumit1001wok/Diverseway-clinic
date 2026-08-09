@@ -15,6 +15,7 @@ const { renderBlogPostPage, renderBlogNotFoundPage } = require("./templates/blog
 
 const apiRoutes = require("./routes/api");
 const adminRoutes = require("./routes/admin");
+const authRoutes = require("./routes/auth");
 const { productionMiddleware } = require("./middleware/production");
 
 const app = express();
@@ -67,6 +68,7 @@ app.get("/", (_req, res) => {
 
 app.use("/api", formLimiter, apiRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/auth", authRoutes);
 
 app.get("/blog/:slug", (req, res, next) => {
   const slug = req.params.slug.replace(/\.html$/, "");

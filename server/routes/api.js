@@ -119,6 +119,7 @@ router.post("/booking", (req, res) => {
       preferred_time,
       message,
       source: "website",
+      patient_id: req.session?.patient?.id || null,
     });
 
     res.status(201).json({
@@ -164,6 +165,7 @@ router.post("/screening", (req, res) => {
     contact_name: contactName,
     contact_phone: contactPhone,
     contact_email: contactEmail,
+    patient_id: req.session?.patient?.id || null,
   });
 
   res.status(201).json({ ok: true, id: row.id });

@@ -54,9 +54,23 @@ function verifyAdminLogin(username, password) {
   return safeEqual(username, expected.username) && safeEqual(password, expected.password);
 }
 
+function hasValidPatientSession(req) {
+  return Boolean(req.session && req.session.patient && req.session.patient.id);
+}
+
+function requirePatient(req, res, next) {
+  if (hasValidPatientSession(req)) {
+    return next();
+  }
+
+  return res.status(401).json({ error: "Please sign in to continue." });
+}
+
 module.exports = {
   requireAdmin,
   hasValidSession,
   verifyAdminLogin,
   getAdminCredentials,
+  hasValidPatientSession,
+  requirePatient,
 };

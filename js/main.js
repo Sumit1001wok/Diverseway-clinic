@@ -443,6 +443,22 @@ if (!document.querySelector(".wa-float")) {
   document.body.appendChild(waFloat);
 }
 
+// Patient account nav link: swap "Login" for the patient's first name when signed in.
+// (account.html handles its own nav link via js/account.js; this covers every other page.)
+const navAccountLink = document.getElementById("nav-account-link");
+if (navAccountLink && !document.getElementById("account-login-screen")) {
+  fetch("/api/auth/session", { credentials: "same-origin" })
+    .then((res) => res.json())
+    .then((data) => {
+      if (data.authenticated && data.user) {
+        navAccountLink.textContent = data.user.name ? data.user.name.split(" ")[0] : "My Account";
+      }
+    })
+    .catch(() => {
+      // Not signed in / request failed — leave the default "Login" label.
+    });
+}
+
 // Back-to-top button on all pages
 if (!document.querySelector(".back-to-top")) {
   const backToTop = document.createElement("button");
@@ -618,6 +634,20 @@ if (bookingButton || bookingWhatsAppButton) {
 
   updateServiceHelp();
   applyServiceFromUrl();
+
+  fetch("/api/auth/session", { credentials: "same-origin" })
+    .then((res) => res.json())
+    .then((data) => {
+      if (!data.authenticated || !data.user) {
+        return;
+      }
+      if (nameInput && !nameInput.value) nameInput.value = data.user.name || "";
+      if (emailInput && !emailInput.value) emailInput.value = data.user.email || "";
+      if (phoneInput && !phoneInput.value) phoneInput.value = data.user.phone || "";
+    })
+    .catch(() => {
+      // Not signed in / request failed — leave the booking form as-is.
+    });
 
   function getBookingFields() {
     return {

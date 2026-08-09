@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en-NP">
 <head>
-  <!-- WhatsApp: wa.me uses 9779845366417; matches WHATSAPP_PHONE in js/main.js -->
+  <!-- All WhatsApp / wa.me links use 9779845366417 (+977 9845366417). See WHATSAPP_PHONE in js/main.js. -->
   <meta charset="UTF-8">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -10,42 +10,23 @@
   <link rel="shortcut icon" href="favicon.ico">
   <meta name="theme-color" content="#ffffff">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="robots" content="index, follow">
-  <title>Speech Therapy in Nepal | Services — Diverse Way Clinic Kathmandu</title>
-  <meta name="description" content="Speech therapy in Nepal at Diverse Way Clinic, Kathmandu — speech delays, stuttering, language disorders, voice therapy &amp; more. Certified speech therapists. Book: 9845366417.">
-  <meta name="keywords" content="speech therapy, speech therapy in nepal, speech therapy nepal, speech therapy kathmandu, speech therapist nepal, child speech therapy, speech delay treatment nepal, language therapy kathmandu, voice therapy nepal, occupational therapy nepal, Diverse Way Clinic">
-  <meta name="geo.region" content="NP-BA">
-  <meta name="geo.placename" content="Kathmandu, Nepal">
-  <meta name="geo.position" content="27.6807767;85.3288076">
-  <meta name="ICBM" content="27.6807767, 85.3288076">
-  <link rel="canonical" href="https://www.diversewayclinic.com/services.html">
-  <meta property="og:title" content="Speech Therapy in Nepal | Diverse Way Clinic Services">
-  <meta property="og:description" content="Certified speech therapy, OT, behaviour therapy &amp; counselling in Kathmandu, Nepal.">
-  <meta property="og:url" content="https://www.diversewayclinic.com/services.html">
-  <meta property="og:image" content="https://www.diversewayclinic.com/assets/images/ai/therapy-speech-flashcards.png">
-  <meta property="og:type" content="website">
-  <meta property="og:locale" content="en_NP">
-  <meta property="og:site_name" content="Diverse Way Clinic">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Speech Therapy Nepal — Diverse Way Clinic">
-  <meta name="twitter:description" content="Speech, OT, behaviour therapy &amp; counselling in Kathmandu.">
-  <meta name="twitter:image" content="https://www.diversewayclinic.com/assets/images/ai/therapy-speech-flashcards.png">
+  <meta name="robots" content="noindex, nofollow">
+  <title>My Account | Diverse Way Clinic</title>
+  <link rel="canonical" href="https://www.diversewayclinic.com/account.html">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/animations.css">
 </head>
-<body data-seo-page="services">
+<body data-seo-page="account">
   <header class="site-header">
     <nav class="navbar container">
       <a class="brand" href="index.html" aria-label="Diverse Way Clinic home">
         <img class="brand-logo-img" src="assets/images/logo.png" width="220" height="70" alt="" loading="eager" decoding="async">
         <span class="brand-name">Diverse Way Clinic</span>
       </a>
-      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu" aria-expanded="false">
-        <span class="menu-toggle-bar"></span>
-      </button>
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu" aria-expanded="false"><span class="menu-toggle-bar"></span></button>
       <div class="nav-menu">
         <ul class="nav-links">
           <li><a class="nav-link" href="index.html">Home</a></li>
@@ -60,33 +41,97 @@
     </nav>
   </header>
 
-  <main class="services-page">
-    <section class="page-hero page-hero--banner page-hero--services reveal">
+  <main class="account-page">
+    <section class="page-hero page-hero--banner reveal">
       <div class="container page-hero-content">
-        <h1>Speech Therapy &amp; Therapy Services in Nepal</h1>
-        <p>Certified speech therapy in Kathmandu — plus occupational therapy, behaviour therapy, counselling, and voice therapy for clients across Nepal.</p>
+        <h1>My Account</h1>
+        <p>Sign in to see your booking and screening history — or create an account to get started.</p>
       </div>
     </section>
 
-    <section class="services-detail reveal">
+    <section class="account-section reveal">
       <div class="container">
-        <div class="service-zigzag reveal-stagger" id="service-zigzag"></div>
-      </div>
-    </section>
+        <div id="account-login-screen" class="account-auth-wrap">
+          <div class="account-auth-card booking-card">
+            <div class="filter-bar" id="account-tabs" role="tablist" aria-label="Sign in or create account">
+              <button type="button" class="filter-btn account-tab is-active" data-tab="login" role="tab" aria-selected="true">Sign In</button>
+              <button type="button" class="filter-btn account-tab" data-tab="register" role="tab" aria-selected="false">Create Account</button>
+            </div>
 
-    <section class="services-help reveal">
-      <div class="container services-help-card">
-        <div class="services-help-photo" aria-hidden="true">
-          <img src="assets/images/ai/therapy-session-play.png" width="720" height="520" alt="" loading="lazy">
+            <form id="login-form" class="manage-form account-form">
+              <label class="field">
+                <span>Email</span>
+                <input id="login-email" name="email" type="email" autocomplete="email" required>
+              </label>
+              <label class="field">
+                <span>Password</span>
+                <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+              </label>
+              <button class="btn-primary btn-primary-large" type="submit">Sign In</button>
+              <p id="login-error" class="form-error" role="status"></p>
+            </form>
+
+            <form id="register-form" class="manage-form account-form hidden">
+              <label class="field">
+                <span>Full name</span>
+                <input id="register-name" name="name" type="text" autocomplete="name" required>
+              </label>
+              <label class="field">
+                <span>Email</span>
+                <input id="register-email" name="email" type="email" autocomplete="email" required>
+              </label>
+              <label class="field">
+                <span>Phone</span>
+                <input id="register-phone" name="phone" type="tel" autocomplete="tel" placeholder="98XXXXXXXX">
+              </label>
+              <label class="field">
+                <span>Password</span>
+                <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+                <span class="field-help">At least 8 characters.</span>
+              </label>
+              <button class="btn-primary btn-primary-large" type="submit">Create Account</button>
+              <p id="register-error" class="form-error" role="status"></p>
+            </form>
+          </div>
         </div>
-        <div class="services-help-copy">
-          <h2>Not sure which service you need?</h2>
-          <p>Talk to our specialist and we’ll guide you to the right support plan.</p>
+
+        <div id="account-dashboard" class="hidden">
+          <div class="account-dashboard-head">
+            <div>
+              <p class="hero-eyebrow">My Account</p>
+              <h2 class="section-title">Welcome back, <span id="account-name">there</span></h2>
+            </div>
+            <button type="button" class="btn-outline btn-sm" id="account-logout">Sign out</button>
+          </div>
+
+          <section class="admin-panel booking-card">
+            <div class="panel-head">
+              <h2 class="section-title admin-section-title">Your appointment requests</h2>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>Ref</th><th>Submitted</th><th>Service</th><th>Preferred</th><th>Status</th></tr>
+                </thead>
+                <tbody id="account-bookings-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="admin-panel booking-card">
+            <div class="panel-head">
+              <h2 class="section-title admin-section-title">Your screening history</h2>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>Date</th><th>Category</th><th>Result</th></tr>
+                </thead>
+                <tbody id="account-screenings-body"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
-        <a class="btn-whatsapp btn-whatsapp-large services-help-cta" href="https://wa.me/9779845366417?text=Hi%2C%20I%20would%20like%20to%20talk%20to%20a%20specialist%20about%20services" aria-label="Message a specialist on WhatsApp">
-          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.78 14.78L2 22l5.36-1.2A10 10 0 1 0 12 2Zm0 18.5a8.48 8.48 0 0 1-4.33-1.18l-.3-.18l-3.18.7l.7-3.1l-.2-.32A8.5 8.5 0 1 1 12 20.5Zm4.83-6.34c-.26-.13-1.55-.76-1.8-.84c-.24-.09-.42-.13-.6.13c-.18.26-.68.84-.84 1.02c-.15.18-.3.2-.56.07c-.26-.13-1.1-.4-2.1-1.28c-.78-.7-1.3-1.55-1.45-1.8c-.15-.25-.02-.38.11-.5c.12-.12.26-.3.39-.45c.13-.15.18-.25.27-.42c.09-.18.04-.33-.02-.46c-.07-.13-.6-1.44-.82-1.97c-.22-.53-.45-.46-.6-.47h-.52c-.17 0-.46.06-.7.33c-.24.26-.92.9-.92 2.2c0 1.3.94 2.55 1.07 2.73c.13.18 1.84 2.8 4.45 3.93c.62.27 1.1.43 1.48.55c.62.2 1.18.17 1.62.1c.5-.08 1.55-.64 1.77-1.25c.22-.62.22-1.14.15-1.26c-.06-.12-.24-.2-.5-.33Z"/></svg>
-          WhatsApp Our Specialist
-        </a>
       </div>
     </section>
   </main>
@@ -132,6 +177,6 @@
 
   <script src="js/seo-schema.js"></script>
   <script src="js/main.js"></script>
-  <script src="js/content.js"></script>
+  <script src="js/account.js"></script>
 </body>
 </html>

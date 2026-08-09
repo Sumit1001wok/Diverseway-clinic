@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
+const bcrypt = require("bcryptjs");
 const { SERVICES, TEAM_MEMBERS, TESTIMONIALS, BLOG_POSTS, SETTINGS } = require("./seedContent");
 
 const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
@@ -157,14 +158,26 @@ function initSchema() {
       is_reviewed INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS patients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
   `);
 
   migrateBookingColumns();
+  migratePatientIdColumns();
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
     CREATE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(reference);
+    CREATE INDEX IF NOT EXISTS idx_bookings_patient ON bookings(patient_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_availability_date ON availability_slots(slot_date);
     CREATE INDEX IF NOT EXISTS idx_services_sort ON services(sort_order);
@@ -173,7 +186,23 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_blog_posts_published ON blog_posts(published_at DESC);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_status ON blog_posts(status);
     CREATE INDEX IF NOT EXISTS idx_screening_created_at ON screening_submissions(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_screening_patient ON screening_submissions(patient_id);
+    CREATE INDEX IF NOT EXISTS idx_patients_email ON patients(email);
   `);
+}
+
+function migratePatientIdColumns() {
+  const bookingCols = new Set(db.prepare("PRAGMA table_info(bookings)").all().map((c) => c.name));
+  if (!bookingCols.has("patient_id")) {
+    db.exec("ALTER TABLE bookings ADD COLUMN patient_id INTEGER REFERENCES patients(id)");
+  }
+
+  const screeningCols = new Set(
+    db.prepare("PRAGMA table_info(screening_submissions)").all().map((c) => c.name)
+  );
+  if (!screeningCols.has("patient_id")) {
+    db.exec("ALTER TABLE screening_submissions ADD COLUMN patient_id INTEGER REFERENCES patients(id)");
+  }
 }
 
 function migrateBookingColumns() {
@@ -801,10 +830,10 @@ function createBooking(payload) {
       `
       INSERT INTO bookings (
         reference, name, phone, email, patient_name, patient_age, visit_type,
-        service, preferred_date, preferred_time, duration_minutes, message, status, source, created_at, updated_at
+        service, preferred_date, preferred_time, duration_minutes, message, status, source, patient_id, created_at, updated_at
       ) VALUES (
         @reference, @name, @phone, @email, @patient_name, @patient_age, @visit_type,
-        @service, @preferred_date, @preferred_time, @duration_minutes, @message, 'pending', @source, @created_at, @updated_at
+        @service, @preferred_date, @preferred_time, @duration_minutes, @message, 'pending', @source, @patient_id, @created_at, @updated_at
       )
     `
     )
@@ -822,6 +851,7 @@ function createBooking(payload) {
       duration_minutes: durationMinutes,
       message: payload.message,
       source: payload.source || "website",
+      patient_id: payload.patient_id || null,
       created_at: createdAt,
       updated_at: createdAt,
     });
@@ -1400,10 +1430,10 @@ function createScreeningSubmission(payload) {
       `
       INSERT INTO screening_submissions (
         category, category_label, age_band, answers, notes, conclusion,
-        contact_name, contact_phone, contact_email, created_at
+        contact_name, contact_phone, contact_email, patient_id, created_at
       ) VALUES (
         @category, @category_label, @age_band, @answers, @notes, @conclusion,
-        @contact_name, @contact_phone, @contact_email, @created_at
+        @contact_name, @contact_phone, @contact_email, @patient_id, @created_at
       )
     `
     )
@@ -1417,6 +1447,7 @@ function createScreeningSubmission(payload) {
       contact_name: payload.contact_name || null,
       contact_phone: payload.contact_phone || null,
       contact_email: payload.contact_email || null,
+      patient_id: payload.patient_id || null,
       created_at: now,
     });
   return withScreeningSubmission(
@@ -1440,6 +1471,91 @@ function updateScreeningSubmissionReviewed(id, isReviewed) {
 
 function deleteScreeningSubmission(id) {
   return db.prepare("DELETE FROM screening_submissions WHERE id = ?").run(id).changes > 0;
+}
+
+function withoutPasswordHash(patient) {
+  if (!patient) {
+    return null;
+  }
+  const { password_hash, ...safe } = patient;
+  return safe;
+}
+
+function createPatient({ name, email, phone, password }) {
+  const now = nowIso();
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  const result = db
+    .prepare(
+      `
+      INSERT INTO patients (name, email, phone, password_hash, created_at, updated_at)
+      VALUES (@name, @email, @phone, @password_hash, @created_at, @updated_at)
+    `
+    )
+    .run({
+      name,
+      email: email.toLowerCase(),
+      phone: phone || null,
+      password_hash: passwordHash,
+      created_at: now,
+      updated_at: now,
+    });
+
+  return getPatientById(result.lastInsertRowid);
+}
+
+function getPatientByEmail(email) {
+  return db.prepare("SELECT * FROM patients WHERE email = ?").get(String(email || "").toLowerCase());
+}
+
+function getPatientById(id) {
+  return withoutPasswordHash(db.prepare("SELECT * FROM patients WHERE id = ?").get(id));
+}
+
+function verifyPatientPassword(email, password) {
+  const patient = getPatientByEmail(email);
+  if (!patient) {
+    return null;
+  }
+  if (!bcrypt.compareSync(password, patient.password_hash)) {
+    return null;
+  }
+  return withoutPasswordHash(patient);
+}
+
+function linkGuestRecordsToPatient(patientId, email, phone) {
+  const params = { patientId, email: email ? email.toLowerCase() : null, phone: phone || null };
+
+  db.prepare(
+    `
+    UPDATE bookings SET patient_id = @patientId
+    WHERE patient_id IS NULL
+      AND ((@email IS NOT NULL AND LOWER(email) = @email) OR (@phone IS NOT NULL AND phone = @phone))
+  `
+  ).run(params);
+
+  db.prepare(
+    `
+    UPDATE screening_submissions SET patient_id = @patientId
+    WHERE patient_id IS NULL
+      AND ((@email IS NOT NULL AND LOWER(contact_email) = @email) OR (@phone IS NOT NULL AND contact_phone = @phone))
+  `
+  ).run(params);
+}
+
+function listBookingsForPatient(patientId) {
+  return db
+    .prepare("SELECT * FROM bookings WHERE patient_id = ? ORDER BY datetime(created_at) DESC, id DESC")
+    .all(patientId);
+}
+
+function listScreeningSubmissionsForPatient(patientId) {
+  return db
+    .prepare(
+      "SELECT * FROM screening_submissions WHERE patient_id = ? ORDER BY datetime(created_at) DESC, id DESC"
+    )
+    .all(patientId)
+    .map(withScreeningSubmission);
 }
 
 module.exports = {
@@ -1493,4 +1609,11 @@ module.exports = {
   listScreeningSubmissions,
   updateScreeningSubmissionReviewed,
   deleteScreeningSubmission,
+  createPatient,
+  getPatientByEmail,
+  getPatientById,
+  verifyPatientPassword,
+  linkGuestRecordsToPatient,
+  listBookingsForPatient,
+  listScreeningSubmissionsForPatient,
 };
