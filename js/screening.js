@@ -49,15 +49,49 @@
     return state.category.getQuestions(state.ageBand, state.answers);
   }
 
+  function stepperHtml() {
+    const hasAgeBand = Boolean(state.category && state.category.ageBands);
+    const labels = hasAgeBand ? ["Concern", "Age", "Questions", "Result"] : ["Concern", "Questions", "Result"];
+    let activeIndex = 0;
+    if (state.step === "ageBand") activeIndex = 1;
+    else if (state.step === "questions") activeIndex = hasAgeBand ? 2 : 1;
+    else if (state.step === "result") activeIndex = labels.length - 1;
+
+    return `
+      <div class="screening-stepper" role="presentation">
+        ${labels
+          .map((label, i) => {
+            const done = i < activeIndex;
+            const active = i === activeIndex;
+            return `
+            <div class="screening-stepper-item${done ? " is-done" : ""}${active ? " is-active" : ""}">
+              <span class="screening-stepper-dot">${done ? "✓" : i + 1}</span>
+              <span class="screening-stepper-label">${escapeHtml(label)}</span>
+            </div>
+            ${i < labels.length - 1 ? '<span class="screening-stepper-line' + (done ? " is-done" : "") + '"></span>' : ""}`;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
   function render() {
-    if (state.step === "category") return renderCategoryStep();
-    if (state.step === "ageBand") return renderAgeBandStep();
-    if (state.step === "questions") return renderQuestionsStep();
-    return renderResultStep();
+    if (state.step === "category") renderCategoryStep();
+    else if (state.step === "ageBand") renderAgeBandStep();
+    else if (state.step === "questions") renderQuestionsStep();
+    else renderResultStep();
+
+    const stepEl = container.querySelector(".screening-step");
+    if (stepEl) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => stepEl.classList.add("is-in"));
+      });
+    }
   }
 
   function renderCategoryStep() {
     container.innerHTML = `
+      ${stepperHtml()}
       <div class="screening-step" data-step="category">
         <div class="screening-category-grid">
           ${CATEGORIES.map(
@@ -84,6 +118,7 @@
 
   function renderAgeBandStep() {
     container.innerHTML = `
+      ${stepperHtml()}
       <div class="screening-step" data-step="ageband">
         <button type="button" class="screening-back" data-back>← Back</button>
         <h3 class="screening-step-title">${escapeHtml(state.category.label)}</h3>
@@ -131,6 +166,7 @@
     const allAnswered = answeredCount === questions.length;
 
     container.innerHTML = `
+      ${stepperHtml()}
       <div class="screening-step" data-step="questions">
         <button type="button" class="screening-back" data-back>← Back</button>
         <h3 class="screening-step-title">${escapeHtml(state.category.label)}</h3>
@@ -221,6 +257,7 @@
     const waUrl = `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(waMessage)}`;
 
     container.innerHTML = `
+      ${stepperHtml()}
       <div class="screening-step screening-result" data-step="result">
         <div class="screening-result-badge ${tierInfo.className}">
           <span class="screening-result-emoji">${tierInfo.emoji}</span>
@@ -274,6 +311,11 @@
       state.submitted = false;
       render();
     });
+
+    if (typeof window.attachLiveValidation === "function") {
+      window.attachLiveValidation(document.getElementById("screening-contact-name"), window.VALIDATORS.nonEmpty);
+      window.attachLiveValidation(document.getElementById("screening-contact-phone"), window.VALIDATORS.phone);
+    }
 
     const callbackForm = document.getElementById("screening-callback-form");
     callbackForm.addEventListener("submit", async (event) => {

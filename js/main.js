@@ -19,13 +19,66 @@ async function postJson(url, payload) {
   return data;
 }
 
+function attachLiveValidation(input, isValid) {
+  if (!input) {
+    return;
+  }
+
+  const field = input.closest(".field");
+  if (!field) {
+    return;
+  }
+
+  let touched = false;
+
+  function update() {
+    const value = input.value.trim();
+    if (!touched && !value) {
+      field.classList.remove("is-valid", "is-invalid");
+      return;
+    }
+    const valid = isValid(value);
+    field.classList.toggle("is-valid", valid);
+    field.classList.toggle("is-invalid", !valid);
+  }
+
+  input.addEventListener("blur", () => {
+    touched = true;
+    update();
+  });
+  input.addEventListener("input", () => {
+    if (touched) {
+      update();
+    }
+  });
+}
+
+const VALIDATORS = {
+  nonEmpty: (v) => v.length > 0,
+  email: (v) => v === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+  emailRequired: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+  phone: (v) => v.length >= 7 && v.length <= 20,
+};
+window.VALIDATORS = VALIDATORS;
+window.attachLiveValidation = attachLiveValidation;
+
 function setFormFeedback(errorEl, successEl, { error = "", success = "" } = {}) {
   if (errorEl) {
     errorEl.textContent = error;
+    errorEl.classList.remove("is-shown");
+    if (error) {
+      void errorEl.offsetWidth;
+      errorEl.classList.add("is-shown");
+    }
   }
   if (successEl) {
     successEl.textContent = success;
     successEl.hidden = !success;
+    successEl.classList.remove("is-shown");
+    if (success) {
+      void successEl.offsetWidth;
+      successEl.classList.add("is-shown");
+    }
   }
 }
 
@@ -79,6 +132,26 @@ function initPageFade() {
   document.body.classList.add("page-ready");
 }
 
+/* Lazy image fade-in (works for images injected later by content.js) */
+document.documentElement.classList.add("img-fade-ready");
+
+document.querySelectorAll('img[loading="lazy"]').forEach((img) => {
+  if (img.complete && img.naturalWidth > 0) {
+    img.classList.add("is-loaded");
+  }
+});
+
+document.addEventListener(
+  "load",
+  (event) => {
+    const target = event.target;
+    if (target instanceof HTMLImageElement && target.loading === "lazy") {
+      target.classList.add("is-loaded");
+    }
+  },
+  true
+);
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initPageFade);
 } else {
@@ -87,8 +160,6 @@ if (document.readyState === "loading") {
 
 const revealElements = document.querySelectorAll(".reveal");
 const counters = document.querySelectorAll(".counter");
-const testimonialTrack = document.querySelector(".testimonial-track");
-const testimonialCards = document.querySelectorAll(".testimonial-card");
 
 function animateCounter(counter) {
   if (counter.dataset.animated === "true") {
@@ -146,13 +217,86 @@ if (counters.length > 0 && revealElements.length === 0) {
   counters.forEach((counter) => animateCounter(counter));
 }
 
-if (testimonialTrack && testimonialCards.length > 1) {
-  let activeIndex = 0;
+function initTestimonialCarousel() {
+  const track = document.getElementById("testimonial-track");
+  const wrapper = document.getElementById("testimonial-track-wrapper");
+  const dotsEl = document.getElementById("testimonial-dots");
+  const prevBtn = document.getElementById("testimonial-prev");
+  const nextBtn = document.getElementById("testimonial-next");
+  if (!track || !wrapper) {
+    return;
+  }
 
-  setInterval(() => {
-    activeIndex = (activeIndex + 1) % testimonialCards.length;
-    testimonialTrack.style.transform = `translateX(-${activeIndex * 100}%)`;
-  }, 4200);
+  const cards = Array.from(track.querySelectorAll(".testimonial-card"));
+  if (cards.length === 0) {
+    return;
+  }
+
+  if (cards.length === 1) {
+    wrapper.classList.add("is-single");
+    prevBtn?.classList.add("hidden");
+    nextBtn?.classList.add("hidden");
+    return;
+  }
+
+  let activeIndex = 0;
+  let timer = null;
+  const AUTO_MS = 5000;
+
+  if (dotsEl) {
+    dotsEl.innerHTML = cards
+      .map((_, i) => `<button type="button" class="testimonial-dot${i === 0 ? " is-active" : ""}" data-index="${i}" aria-label="Show testimonial ${i + 1}"></button>`)
+      .join("");
+  }
+  const dots = dotsEl ? Array.from(dotsEl.querySelectorAll(".testimonial-dot")) : [];
+
+  function goTo(index) {
+    activeIndex = (index + cards.length) % cards.length;
+    track.style.transform = `translateX(-${activeIndex * 100}%)`;
+    dots.forEach((dot, i) => dot.classList.toggle("is-active", i === activeIndex));
+  }
+
+  function startAuto() {
+    stopAuto();
+    timer = setInterval(() => goTo(activeIndex + 1), AUTO_MS);
+  }
+
+  function stopAuto() {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  prevBtn?.addEventListener("click", () => {
+    goTo(activeIndex - 1);
+    startAuto();
+  });
+  nextBtn?.addEventListener("click", () => {
+    goTo(activeIndex + 1);
+    startAuto();
+  });
+  dots.forEach((dot) => {
+    dot.addEventListener("click", () => {
+      goTo(Number(dot.dataset.index));
+      startAuto();
+    });
+  });
+
+  wrapper.addEventListener("mouseenter", stopAuto);
+  wrapper.addEventListener("mouseleave", startAuto);
+  wrapper.addEventListener("focusin", stopAuto);
+  wrapper.addEventListener("focusout", startAuto);
+
+  goTo(0);
+  startAuto();
+}
+
+window.initTestimonialCarousel = initTestimonialCarousel;
+
+const staticTestimonialTrack = document.querySelector(".testimonial-track");
+if (staticTestimonialTrack && staticTestimonialTrack.querySelector(".testimonial-card")) {
+  initTestimonialCarousel();
 }
 
 // Gallery: filter + lightbox
@@ -299,6 +443,36 @@ if (!document.querySelector(".wa-float")) {
   document.body.appendChild(waFloat);
 }
 
+// Back-to-top button on all pages
+if (!document.querySelector(".back-to-top")) {
+  const backToTop = document.createElement("button");
+  backToTop.type = "button";
+  backToTop.className = "back-to-top";
+  backToTop.setAttribute("aria-label", "Back to top");
+  backToTop.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5.83 6.41 11.4 5 10l7-7 7 7-1.41 1.41L12 5.83Zm0 6.34L6.41 17.7 5 16.3l7-7 7 7-1.41 1.4L12 12.17Z"/></svg>`;
+  document.body.appendChild(backToTop);
+
+  backToTop.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  let ticking = false;
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (ticking) {
+        return;
+      }
+      ticking = true;
+      requestAnimationFrame(() => {
+        backToTop.classList.toggle("is-visible", window.scrollY > 640);
+        ticking = false;
+      });
+    },
+    { passive: true }
+  );
+}
+
 // Booking page: submit to API + optional WhatsApp
 const bookingButton = document.getElementById("bk-submit");
 const bookingWhatsAppButton = document.getElementById("bk-whatsapp");
@@ -317,6 +491,10 @@ if (bookingButton || bookingWhatsAppButton) {
   const messageInput = document.getElementById("bk-message");
   const errorEl = document.getElementById("bk-error");
   const successEl = document.getElementById("bk-success");
+
+  attachLiveValidation(nameInput, VALIDATORS.nonEmpty);
+  attachLiveValidation(phoneInput, VALIDATORS.phone);
+  attachLiveValidation(emailInput, VALIDATORS.email);
 
   if (dateInput) {
     dateInput.min = new Date().toISOString().slice(0, 10);
@@ -553,6 +731,11 @@ if (contactButton || contactWhatsAppButton) {
   const messageInput = document.getElementById("ct-message");
   const errorEl = document.getElementById("ct-error");
   const successEl = document.getElementById("ct-success");
+
+  attachLiveValidation(nameInput, VALIDATORS.nonEmpty);
+  attachLiveValidation(emailInput, VALIDATORS.email);
+  attachLiveValidation(subjectInput, VALIDATORS.nonEmpty);
+  attachLiveValidation(messageInput, VALIDATORS.nonEmpty);
 
   function getContactFields() {
     return {

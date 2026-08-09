@@ -250,9 +250,16 @@
     <section class="home-section testimonials reveal">
       <div class="container">
         <h2 class="section-title">What Our Patients Say</h2>
-        <div class="testimonial-track-wrapper">
+        <div class="testimonial-track-wrapper" id="testimonial-track-wrapper">
           <div class="testimonial-track reveal-stagger" id="testimonial-track"></div>
+          <button type="button" class="testimonial-arrow testimonial-arrow-prev" id="testimonial-prev" aria-label="Previous testimonial">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6Z"/></svg>
+          </button>
+          <button type="button" class="testimonial-arrow testimonial-arrow-next" id="testimonial-next" aria-label="Next testimonial">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4L13.2 12 8.6 16.6Z"/></svg>
+          </button>
         </div>
+        <div class="testimonial-dots" id="testimonial-dots"></div>
       </div>
     </section>
 

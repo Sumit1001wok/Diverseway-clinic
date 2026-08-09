@@ -190,6 +190,9 @@ async function initTestimonials() {
   }
   const { data } = await fetchJson("/api/testimonials");
   container.innerHTML = data.map(testimonialCardHtml).join("");
+  if (typeof window.initTestimonialCarousel === "function") {
+    window.initTestimonialCarousel();
+  }
 }
 
 async function initHomeBlogPreview() {
