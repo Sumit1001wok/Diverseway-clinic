@@ -98,10 +98,10 @@ const SERVICES = [
 const TEAM_MEMBERS = [
   {
     name: "Kriti Karn",
-    title: "Speech Therapist",
+    title: "Director & Speech-Language Pathologist",
     bio: "Speech and language therapy with a calm, structured approach focused on confidence and clarity.",
     bio_short: "Speech and language support tailored to clarity and confidence.",
-    photo_url: "assets/images/ai/team-a.png",
+    photo_url: "assets/images/team-kriti-karn.jpg",
     whatsapp_message: "Hi, I'd like to book with Kriti Karn",
     sort_order: 1,
   },
