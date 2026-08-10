@@ -13,7 +13,9 @@ const {
   listBlogPosts,
   listSettings,
   createScreeningSubmission,
+  updateScreeningSubmissionContact,
 } = require("../db");
+const { notifyNewBooking, notifyNewContact, notifyScreeningCallback } = require("../whatsapp");
 
 const router = express.Router();
 
@@ -122,6 +124,8 @@ router.post("/booking", (req, res) => {
       patient_id: req.session?.patient?.id || null,
     });
 
+    notifyNewBooking(row);
+
     res.status(201).json({
       ok: true,
       id: row.id,
@@ -171,6 +175,39 @@ router.post("/screening", (req, res) => {
   res.status(201).json({ ok: true, id: row.id });
 });
 
+router.patch("/screening/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "Invalid screening id." });
+  }
+
+  const contactName = trim(req.body.contact_name) || null;
+  const contactPhone = trim(req.body.contact_phone) || null;
+  const contactEmail = trim(req.body.contact_email) || null;
+
+  if (!contactName || !contactPhone) {
+    return res.status(400).json({ error: "Name and phone are required." });
+  }
+
+  if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+    return res.status(400).json({ error: "Please enter a valid email address." });
+  }
+
+  const row = updateScreeningSubmissionContact(id, {
+    contact_name: contactName,
+    contact_phone: contactPhone,
+    contact_email: contactEmail,
+  });
+
+  if (!row) {
+    return res.status(404).json({ error: "Screening not found." });
+  }
+
+  notifyScreeningCallback(row);
+
+  res.json({ ok: true, id: row.id });
+});
+
 router.post("/contact", (req, res) => {
   const name = trim(req.body.name) || null;
   const email = trim(req.body.email) || null;
@@ -188,6 +225,8 @@ router.post("/contact", (req, res) => {
   }
 
   const row = createContact({ name, email, subject, message });
+
+  notifyNewContact(row);
 
   res.status(201).json({
     ok: true,
