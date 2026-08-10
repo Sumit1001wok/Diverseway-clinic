@@ -1,32 +1,73 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const { SERVICES, TEAM_MEMBERS, TESTIMONIALS, BLOG_POSTS, SETTINGS } = require("./seedContent");
 
-const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
-const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "clinic.db");
-const legacyBookingsPath = path.join(dataDir, "bookings.json");
-const legacyMessagesPath = path.join(dataDir, "messages.json");
+const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
-function ensureDataDir() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+if (!connectionString) {
+  throw new Error(
+    "DATABASE_URL (or POSTGRES_URL) is not set. This app needs a Postgres connection string — see .env.example."
+  );
+}
+
+// Neon/Vercel Postgres require TLS; a local dev/test database on localhost does not.
+const isLocalDb = /localhost|127\.0\.0\.1/.test(connectionString);
+
+const pool = new Pool({
+  connectionString,
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
+  // Serverless best practice: keep each function instance's own pool small and
+  // rely on the upstream PgBouncer-style pooler (Neon/Vercel Postgres provide
+  // one) for real connection reuse across concurrent invocations.
+  max: Number(process.env.PG_POOL_MAX) || 5,
+});
+
+async function query(text, params) {
+  const result = await pool.query(text, params);
+  return result;
+}
+
+async function queryAll(text, params) {
+  const result = await query(text, params);
+  return result.rows;
+}
+
+async function queryOne(text, params) {
+  const rows = await queryAll(text, params);
+  return rows[0] || null;
+}
+
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
-ensureDataDir();
+async function initSchema() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS patients (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
 
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-
-function initSchema() {
-  db.exec(`
     CREATE TABLE IF NOT EXISTS bookings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       reference TEXT UNIQUE,
       name TEXT NOT NULL,
       phone TEXT NOT NULL,
@@ -44,12 +85,14 @@ function initSchema() {
       message TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       source TEXT DEFAULT 'website',
+      duration_minutes INTEGER,
+      patient_id INTEGER REFERENCES patients(id),
       created_at TEXT NOT NULL,
       updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT,
       email TEXT,
       subject TEXT NOT NULL,
@@ -59,18 +102,17 @@ function initSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS availability_slots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,
       is_available INTEGER NOT NULL DEFAULT 1,
-      booking_id INTEGER,
+      booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
-      UNIQUE(slot_date, slot_time),
-      FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL
+      UNIQUE(slot_date, slot_time)
     );
 
     CREATE TABLE IF NOT EXISTS services (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       short_description TEXT,
@@ -88,7 +130,7 @@ function initSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS team_members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       title TEXT,
       bio TEXT,
@@ -102,7 +144,7 @@ function initSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS testimonials (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       attribution TEXT NOT NULL,
       quote TEXT NOT NULL,
       avatar_url TEXT,
@@ -114,7 +156,7 @@ function initSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS blog_posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       slug TEXT UNIQUE NOT NULL,
       title TEXT NOT NULL,
       excerpt TEXT,
@@ -145,7 +187,7 @@ function initSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS screening_submissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       category TEXT NOT NULL,
       category_label TEXT,
       age_band TEXT,
@@ -156,24 +198,12 @@ function initSchema() {
       contact_phone TEXT,
       contact_email TEXT,
       is_reviewed INTEGER NOT NULL DEFAULT 0,
+      patient_id INTEGER REFERENCES patients(id),
       created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS patients (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      phone TEXT,
-      password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT
     );
   `);
 
-  migrateBookingColumns();
-  migratePatientIdColumns();
-
-  db.exec(`
+  await query(`
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
     CREATE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(reference);
@@ -191,296 +221,153 @@ function initSchema() {
   `);
 }
 
-function migratePatientIdColumns() {
-  const bookingCols = new Set(db.prepare("PRAGMA table_info(bookings)").all().map((c) => c.name));
-  if (!bookingCols.has("patient_id")) {
-    db.exec("ALTER TABLE bookings ADD COLUMN patient_id INTEGER REFERENCES patients(id)");
-  }
-
-  const screeningCols = new Set(
-    db.prepare("PRAGMA table_info(screening_submissions)").all().map((c) => c.name)
-  );
-  if (!screeningCols.has("patient_id")) {
-    db.exec("ALTER TABLE screening_submissions ADD COLUMN patient_id INTEGER REFERENCES patients(id)");
-  }
-}
-
-function migrateBookingColumns() {
-  const columns = [
-    ["reference", "TEXT"],
-    ["email", "TEXT"],
-    ["patient_name", "TEXT"],
-    ["patient_age", "TEXT"],
-    ["visit_type", "TEXT DEFAULT 'new'"],
-    ["confirmed_date", "TEXT"],
-    ["confirmed_time", "TEXT"],
-    ["assigned_to", "TEXT"],
-    ["admin_notes", "TEXT"],
-    ["source", "TEXT DEFAULT 'website'"],
-    ["updated_at", "TEXT"],
-    ["duration_minutes", "INTEGER"],
-  ];
-
-  const existing = new Set(
-    db.prepare("PRAGMA table_info(bookings)").all().map((col) => col.name)
-  );
-
-  columns.forEach(([name, definition]) => {
-    if (!existing.has(name)) {
-      db.exec(`ALTER TABLE bookings ADD COLUMN ${name} ${definition}`);
-    }
-  });
-
-  const missingRefs = db
-    .prepare("SELECT id, created_at FROM bookings WHERE reference IS NULL OR reference = ''")
-    .all();
-
-  if (missingRefs.length > 0) {
-    const update = db.prepare("UPDATE bookings SET reference = ? WHERE id = ?");
-    missingRefs.forEach((row) => {
-      update.run(buildReferenceForDate(new Date(row.created_at), row.id), row.id);
-    });
-  }
-
-  db.prepare(
-    `
-    UPDATE bookings
-    SET duration_minutes = CASE service
-      WHEN 'Speech Therapy' THEN 30
-      WHEN 'Occupational Therapy' THEN 45
-      WHEN 'Behaviour Therapy' THEN 45
-      WHEN 'Voice Therapy' THEN 30
-      WHEN 'Special Education Support' THEN 45
-      ELSE 45
-    END
-    WHERE duration_minutes IS NULL
-  `
-  ).run();
-}
-
-function buildReferenceForDate(date, fallbackId) {
+function referencePrefixForDate(date) {
   const y = String(date.getFullYear()).slice(2);
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  const prefix = `DWC-${y}${m}${d}`;
-  const count = db
-    .prepare("SELECT COUNT(*) AS count FROM bookings WHERE reference LIKE ?")
-    .get(`${prefix}-%`).count;
-  const seq = String(fallbackId || count + 1).padStart(3, "0");
-  return `${prefix}-${seq}`;
+  return `DWC-${y}${m}${d}`;
 }
 
-function generateReference() {
-  return buildReferenceForDate(new Date());
+function buildReferenceForDate(date, seqNumber) {
+  return `${referencePrefixForDate(date)}-${String(seqNumber).padStart(3, "0")}`;
 }
 
-function readLegacyJson(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
-  try {
-    const rows = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return Array.isArray(rows) ? rows : [];
-  } catch {
-    return [];
-  }
-}
-
-function migrateLegacyJson() {
-  const bookingCount = db.prepare("SELECT COUNT(*) AS count FROM bookings").get().count;
-  const messageCount = db.prepare("SELECT COUNT(*) AS count FROM messages").get().count;
-
-  if (bookingCount === 0) {
-    const legacyBookings = readLegacyJson(legacyBookingsPath);
-    if (legacyBookings.length > 0) {
-      const insert = db.prepare(`
-        INSERT INTO bookings (
-          id, reference, name, phone, email, patient_name, patient_age, visit_type,
-          service, preferred_date, preferred_time, message, status, source, created_at
-        ) VALUES (
-          @id, @reference, @name, @phone, @email, @patient_name, @patient_age, @visit_type,
-          @service, @preferred_date, @preferred_time, @message, @status, @source, @created_at
-        )
-      `);
-
-      const migrate = db.transaction((rows) => {
-        rows.forEach((row) => {
-          const createdAt = row.created_at || new Date().toISOString();
-          insert.run({
-            id: row.id,
-            reference: row.reference || buildReferenceForDate(new Date(createdAt), row.id),
-            name: row.name,
-            phone: row.phone,
-            email: row.email || null,
-            patient_name: row.patient_name || null,
-            patient_age: row.patient_age || null,
-            visit_type: row.visit_type || "new",
-            service: row.service,
-            preferred_date: row.preferred_date,
-            preferred_time: row.preferred_time,
-            message: row.message,
-            status: row.status || "pending",
-            source: row.source || "website",
-            created_at: createdAt,
-          });
-        });
-      });
-
-      migrate(legacyBookings);
-      console.log(`Migrated ${legacyBookings.length} booking(s) from JSON to SQLite.`);
-    }
-  }
-
-  if (messageCount === 0) {
-    const legacyMessages = readLegacyJson(legacyMessagesPath);
-    if (legacyMessages.length > 0) {
-      const insert = db.prepare(`
-        INSERT INTO messages (
-          id, name, email, subject, message, is_read, created_at
-        ) VALUES (
-          @id, @name, @email, @subject, @message, @is_read, @created_at
-        )
-      `);
-
-      const migrate = db.transaction((rows) => {
-        rows.forEach((row) => {
-          insert.run({
-            id: row.id,
-            name: row.name,
-            email: row.email,
-            subject: row.subject,
-            message: row.message,
-            is_read: row.is_read ? 1 : 0,
-            created_at: row.created_at || new Date().toISOString(),
-          });
-        });
-      });
-
-      migrate(legacyMessages);
-      console.log(`Migrated ${legacyMessages.length} message(s) from JSON to SQLite.`);
-    }
-  }
-
-  db.exec(`
-    INSERT INTO sqlite_sequence (name, seq)
-    SELECT 'bookings', COALESCE((SELECT MAX(id) FROM bookings), 0)
-    WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'bookings')
-      AND COALESCE((SELECT MAX(id) FROM bookings), 0) > 0;
-
-    INSERT INTO sqlite_sequence (name, seq)
-    SELECT 'messages', COALESCE((SELECT MAX(id) FROM messages), 0)
-    WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'messages')
-      AND COALESCE((SELECT MAX(id) FROM messages), 0) > 0;
-  `);
-
-  ["bookings", "messages"].forEach((table) => {
-    const maxId =
-      db.prepare(`SELECT COALESCE(MAX(id), 0) AS maxId FROM ${table}`).get().maxId || 0;
-    if (maxId === 0) {
-      return;
-    }
-
-    const row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = ?").get(table);
-    if (row) {
-      db.prepare("UPDATE sqlite_sequence SET seq = ? WHERE name = ?").run(maxId, table);
-    } else {
-      db.prepare("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)").run(table, maxId);
-    }
-  });
-}
-
-function seedContentDefaults() {
+async function seedContentDefaults() {
   const now = new Date().toISOString();
 
-  if (db.prepare("SELECT COUNT(*) AS count FROM services").get().count === 0) {
-    const insert = db.prepare(`
-      INSERT INTO services (
-        slug, name, short_description, description, icon_path, detail_icon_path,
-        photo_url, accent_class, treat_list, whatsapp_message, sort_order, created_at, updated_at
-      ) VALUES (
-        @slug, @name, @short_description, @description, @icon_path, @detail_icon_path,
-        @photo_url, @accent_class, @treat_list, @whatsapp_message, @sort_order, @created_at, @updated_at
-      )
-    `);
-    const seed = db.transaction((rows) => {
-      rows.forEach((row) =>
-        insert.run({
-          ...row,
-          treat_list: JSON.stringify(row.treat_list || []),
-          created_at: now,
-          updated_at: now,
-        })
-      );
+  const servicesCount = await queryOne("SELECT COUNT(*)::int AS count FROM services");
+  if (servicesCount.count === 0) {
+    await withTransaction(async (client) => {
+      for (const row of SERVICES) {
+        await client.query(
+          `INSERT INTO services (
+            slug, name, short_description, description, icon_path, detail_icon_path,
+            photo_url, accent_class, treat_list, whatsapp_message, sort_order, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [
+            row.slug,
+            row.name,
+            row.short_description || null,
+            row.description || null,
+            row.icon_path || null,
+            row.detail_icon_path || null,
+            row.photo_url || null,
+            row.accent_class || null,
+            JSON.stringify(row.treat_list || []),
+            row.whatsapp_message || null,
+            row.sort_order || 0,
+            now,
+            now,
+          ]
+        );
+      }
     });
-    seed(SERVICES);
   }
 
-  if (db.prepare("SELECT COUNT(*) AS count FROM team_members").get().count === 0) {
-    const insert = db.prepare(`
-      INSERT INTO team_members (
-        name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, created_at, updated_at
-      ) VALUES (
-        @name, @title, @bio, @bio_short, @photo_url, @whatsapp_message, @sort_order, @created_at, @updated_at
-      )
-    `);
-    const seed = db.transaction((rows) => {
-      rows.forEach((row) => insert.run({ ...row, created_at: now, updated_at: now }));
+  const teamCount = await queryOne("SELECT COUNT(*)::int AS count FROM team_members");
+  if (teamCount.count === 0) {
+    await withTransaction(async (client) => {
+      for (const row of TEAM_MEMBERS) {
+        await client.query(
+          `INSERT INTO team_members (
+            name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            row.name,
+            row.title || null,
+            row.bio || null,
+            row.bio_short || null,
+            row.photo_url || null,
+            row.whatsapp_message || null,
+            row.sort_order || 0,
+            now,
+            now,
+          ]
+        );
+      }
     });
-    seed(TEAM_MEMBERS);
   }
 
-  if (db.prepare("SELECT COUNT(*) AS count FROM testimonials").get().count === 0) {
-    const insert = db.prepare(`
-      INSERT INTO testimonials (
-        attribution, quote, avatar_url, stars, sort_order, created_at, updated_at
-      ) VALUES (
-        @attribution, @quote, @avatar_url, @stars, @sort_order, @created_at, @updated_at
-      )
-    `);
-    const seed = db.transaction((rows) => {
-      rows.forEach((row) => insert.run({ ...row, created_at: now, updated_at: now }));
+  const testimonialsCount = await queryOne("SELECT COUNT(*)::int AS count FROM testimonials");
+  if (testimonialsCount.count === 0) {
+    await withTransaction(async (client) => {
+      for (const row of TESTIMONIALS) {
+        await client.query(
+          `INSERT INTO testimonials (
+            attribution, quote, avatar_url, stars, sort_order, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [row.attribution, row.quote, row.avatar_url || null, row.stars || 5, row.sort_order || 0, now, now]
+        );
+      }
     });
-    seed(TESTIMONIALS);
   }
 
-  if (db.prepare("SELECT COUNT(*) AS count FROM blog_posts").get().count === 0) {
-    const insert = db.prepare(`
-      INSERT INTO blog_posts (
-        slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
-        body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
-        related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
-      ) VALUES (
-        @slug, @title, @excerpt, @category, @category_label, @tag_class, @hero_image_url, @hero_image_alt,
-        @body_html, @meta_description, @keywords, @read_time, @published_at, @updated_at, @is_featured,
-        @related_slugs, @status, @whatsapp_cta_heading, @whatsapp_cta_text, @whatsapp_cta_message, @created_at
-      )
-    `);
-    const seed = db.transaction((rows) => {
-      rows.forEach((row) =>
-        insert.run({
-          ...row,
-          related_slugs: JSON.stringify(row.related_slugs || []),
-          created_at: now,
-        })
-      );
+  const blogCount = await queryOne("SELECT COUNT(*)::int AS count FROM blog_posts");
+  if (blogCount.count === 0) {
+    await withTransaction(async (client) => {
+      for (const row of BLOG_POSTS) {
+        await client.query(
+          `INSERT INTO blog_posts (
+            slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
+            body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
+            related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+          [
+            row.slug,
+            row.title,
+            row.excerpt || null,
+            row.category || null,
+            row.category_label || null,
+            row.tag_class || "",
+            row.hero_image_url || null,
+            row.hero_image_alt || null,
+            row.body_html || "",
+            row.meta_description || null,
+            row.keywords || null,
+            row.read_time || "2 min read",
+            row.published_at || now,
+            now,
+            row.is_featured ? 1 : 0,
+            JSON.stringify(row.related_slugs || []),
+            row.status || "draft",
+            row.whatsapp_cta_heading || null,
+            row.whatsapp_cta_text || null,
+            row.whatsapp_cta_message || null,
+            now,
+          ]
+        );
+      }
     });
-    seed(BLOG_POSTS);
   }
 
-  if (db.prepare("SELECT COUNT(*) AS count FROM site_settings").get().count === 0) {
-    const insert = db.prepare(
-      "INSERT INTO site_settings (key, value, updated_at) VALUES (@key, @value, @updated_at)"
-    );
-    const seed = db.transaction((entries) => {
-      entries.forEach(([key, value]) => insert.run({ key, value: JSON.stringify(value), updated_at: now }));
+  const settingsCount = await queryOne("SELECT COUNT(*)::int AS count FROM site_settings");
+  if (settingsCount.count === 0) {
+    await withTransaction(async (client) => {
+      for (const [key, value] of Object.entries(SETTINGS)) {
+        await client.query(
+          "INSERT INTO site_settings (key, value, updated_at) VALUES ($1, $2, $3)",
+          [key, JSON.stringify(value), now]
+        );
+      }
     });
-    seed(Object.entries(SETTINGS));
   }
 }
 
-initSchema();
-migrateLegacyJson();
-seedContentDefaults();
+let readyPromise = null;
+
+function ensureReady() {
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      await initSchema();
+      await seedContentDefaults();
+    })().catch((err) => {
+      // Let the next call retry instead of permanently caching a failed boot.
+      readyPromise = null;
+      throw err;
+    });
+  }
+  return readyPromise;
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -574,7 +461,8 @@ function buildStandardSlotTimes() {
 
 const STANDARD_SLOT_TIMES = buildStandardSlotTimes();
 
-function listAvailabilitySlots(date, { includeUnavailable = false } = {}) {
+async function listAvailabilitySlots(date, { includeUnavailable = false } = {}) {
+  await ensureReady();
   let sql = `
     SELECT
       s.*,
@@ -585,7 +473,7 @@ function listAvailabilitySlots(date, { includeUnavailable = false } = {}) {
       b.duration_minutes AS booking_duration_minutes
     FROM availability_slots s
     LEFT JOIN bookings b ON b.id = s.booking_id
-    WHERE s.slot_date = ?
+    WHERE s.slot_date = $1
   `;
 
   if (!includeUnavailable) {
@@ -594,25 +482,24 @@ function listAvailabilitySlots(date, { includeUnavailable = false } = {}) {
 
   sql += " ORDER BY s.slot_time ASC";
 
-  return db.prepare(sql).all(date);
+  return queryAll(sql, [date]);
 }
 
 function listAvailabilityForDate(date, options = {}) {
   return listAvailabilitySlots(date, options);
 }
 
-function getActiveBookingsForDate(date) {
-  return db
-    .prepare(
-      `
+async function getActiveBookingsForDate(date) {
+  return queryAll(
+    `
       SELECT id, preferred_time, duration_minutes, service, status
       FROM bookings
-      WHERE preferred_date = ?
+      WHERE preferred_date = $1
         AND preferred_time IS NOT NULL
         AND status IN ('pending', 'confirmed')
-    `
-    )
-    .all(date);
+    `,
+    [date]
+  );
 }
 
 function bookingsOverlap(startMinutes, durationMinutes, bookings, excludeBookingId = null) {
@@ -632,9 +519,9 @@ function bookingsOverlap(startMinutes, durationMinutes, bookings, excludeBooking
   });
 }
 
-function isSlotWindowOpen(date, startMinutes, durationMinutes) {
+async function isSlotWindowOpen(date, startMinutes, durationMinutes) {
   for (let minute = startMinutes; minute < startMinutes + durationMinutes; minute += SLOT_INTERVAL_MINUTES) {
-    const slot = getAvailabilitySlot(date, minutesToTime(minute));
+    const slot = await getAvailabilitySlot(date, minutesToTime(minute));
 
     if (!slot || !slot.is_available || slot.booking_id) {
       return false;
@@ -644,7 +531,7 @@ function isSlotWindowOpen(date, startMinutes, durationMinutes) {
   return true;
 }
 
-function isStartTimeAvailable(date, startTime, durationMinutes, excludeBookingId = null) {
+async function isStartTimeAvailable(date, startTime, durationMinutes, excludeBookingId = null) {
   const startMinutes = timeToMinutes(startTime);
   if (startMinutes === null) {
     return false;
@@ -658,7 +545,7 @@ function isStartTimeAvailable(date, startTime, durationMinutes, excludeBookingId
     return false;
   }
 
-  const bookings = getActiveBookingsForDate(date);
+  const bookings = await getActiveBookingsForDate(date);
 
   if (bookingsOverlap(startMinutes, durationMinutes, bookings, excludeBookingId)) {
     return false;
@@ -667,7 +554,8 @@ function isStartTimeAvailable(date, startTime, durationMinutes, excludeBookingId
   return isSlotWindowOpen(date, startMinutes, durationMinutes);
 }
 
-function listAvailableStartTimes(date, service) {
+async function listAvailableStartTimes(date, service) {
+  await ensureReady();
   const durationMinutes = getServiceDuration(service);
   const starts = [];
 
@@ -678,7 +566,7 @@ function listAvailableStartTimes(date, service) {
   ) {
     const time = minutesToTime(startMinutes);
 
-    if (isStartTimeAvailable(date, time, durationMinutes)) {
+    if (await isStartTimeAvailable(date, time, durationMinutes)) {
       starts.push({
         time,
         label: formatTimeRangeLabel(time, durationMinutes),
@@ -690,59 +578,52 @@ function listAvailableStartTimes(date, service) {
   return starts;
 }
 
-function getAvailabilitySlot(date, time) {
+async function getAvailabilitySlot(date, time) {
   const slotTime = normalizeTime(time);
   if (!date || !slotTime) {
     return null;
   }
 
-  return db
-    .prepare("SELECT * FROM availability_slots WHERE slot_date = ? AND slot_time = ?")
-    .get(date, slotTime);
+  return queryOne("SELECT * FROM availability_slots WHERE slot_date = $1 AND slot_time = $2", [date, slotTime]);
 }
 
-function addAvailabilitySlot(date, time) {
+async function addAvailabilitySlot(date, time) {
+  await ensureReady();
   const slotTime = normalizeTime(time);
   if (!date || !slotTime) {
     return null;
   }
 
-  const existing = getAvailabilitySlot(date, slotTime);
+  const existing = await getAvailabilitySlot(date, slotTime);
   if (existing) {
     return existing;
   }
 
-  const result = db
-    .prepare(
-      `
-      INSERT INTO availability_slots (slot_date, slot_time, is_available, created_at)
-      VALUES (@slot_date, @slot_time, 1, @created_at)
-    `
-    )
-    .run({
-      slot_date: date,
-      slot_time: slotTime,
-      created_at: nowIso(),
-    });
+  const row = await queryOne(
+    `INSERT INTO availability_slots (slot_date, slot_time, is_available, created_at)
+     VALUES ($1, $2, 1, $3) RETURNING *`,
+    [date, slotTime, nowIso()]
+  );
 
-  return db.prepare("SELECT * FROM availability_slots WHERE id = ?").get(result.lastInsertRowid);
+  return row;
 }
 
-function addStandardAvailability(date) {
+async function addStandardAvailability(date) {
   const created = [];
 
-  STANDARD_SLOT_TIMES.forEach((time) => {
-    const slot = addAvailabilitySlot(date, time);
+  for (const time of STANDARD_SLOT_TIMES) {
+    const slot = await addAvailabilitySlot(date, time);
     if (slot) {
       created.push(slot);
     }
-  });
+  }
 
   return created;
 }
 
-function setAvailabilitySlot(id, payload) {
-  const existing = db.prepare("SELECT * FROM availability_slots WHERE id = ?").get(id);
+async function setAvailabilitySlot(id, payload) {
+  await ensureReady();
+  const existing = await queryOne("SELECT * FROM availability_slots WHERE id = $1", [id]);
   if (!existing) {
     return null;
   }
@@ -753,43 +634,41 @@ function setAvailabilitySlot(id, payload) {
 
   const isAvailable = payload.is_available === undefined ? existing.is_available : payload.is_available ? 1 : 0;
 
-  db.prepare("UPDATE availability_slots SET is_available = ? WHERE id = ?").run(isAvailable, id);
+  await query("UPDATE availability_slots SET is_available = $1 WHERE id = $2", [isAvailable, id]);
 
-  return db.prepare("SELECT * FROM availability_slots WHERE id = ?").get(id);
+  return queryOne("SELECT * FROM availability_slots WHERE id = $1", [id]);
 }
 
-function deleteAvailabilitySlot(id) {
-  const existing = db.prepare("SELECT * FROM availability_slots WHERE id = ?").get(id);
+async function deleteAvailabilitySlot(id) {
+  await ensureReady();
+  const existing = await queryOne("SELECT * FROM availability_slots WHERE id = $1", [id]);
   if (!existing || existing.booking_id) {
     return false;
   }
 
-  const result = db.prepare("DELETE FROM availability_slots WHERE id = ?").run(id);
-  return result.changes > 0;
+  const result = await query("DELETE FROM availability_slots WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
-function reserveAvailabilitySlot(date, time, bookingId, durationMinutes) {
+async function reserveAvailabilitySlot(date, time, bookingId, durationMinutes) {
   const startMinutes = timeToMinutes(time);
   if (startMinutes === null) {
     return false;
   }
 
-  if (!isStartTimeAvailable(date, time, durationMinutes, bookingId)) {
+  if (!(await isStartTimeAvailable(date, time, durationMinutes, bookingId))) {
     return false;
   }
 
-  const update = db.prepare(
-    `
-    UPDATE availability_slots
-    SET is_available = 0, booking_id = ?
-    WHERE slot_date = ? AND slot_time = ? AND is_available = 1 AND booking_id IS NULL
-  `
-  );
-
   for (let minute = startMinutes; minute < startMinutes + durationMinutes; minute += SLOT_INTERVAL_MINUTES) {
-    const result = update.run(bookingId, date, minutesToTime(minute));
-    if (result.changes === 0) {
-      releaseAvailabilityForBooking(bookingId);
+    const result = await query(
+      `UPDATE availability_slots
+       SET is_available = 0, booking_id = $1
+       WHERE slot_date = $2 AND slot_time = $3 AND is_available = 1 AND booking_id IS NULL`,
+      [bookingId, date, minutesToTime(minute)]
+    );
+    if (result.rowCount === 0) {
+      await releaseAvailabilityForBooking(bookingId);
       return false;
     }
   }
@@ -797,77 +676,93 @@ function reserveAvailabilitySlot(date, time, bookingId, durationMinutes) {
   return true;
 }
 
-function releaseAvailabilityForBooking(bookingId) {
-  db.prepare(
-    `
-    UPDATE availability_slots
-    SET is_available = 1, booking_id = NULL
-    WHERE booking_id = ?
-  `
-  ).run(bookingId);
+async function releaseAvailabilityForBooking(bookingId) {
+  await query(
+    `UPDATE availability_slots
+     SET is_available = 1, booking_id = NULL
+     WHERE booking_id = $1`,
+    [bookingId]
+  );
 }
 
-function isSlotBookable(date, time, service) {
+async function isSlotBookable(date, time, service) {
   const durationMinutes = getServiceDuration(service);
   return isStartTimeAvailable(date, time, durationMinutes);
 }
 
-function createBooking(payload) {
+async function createBooking(payload) {
+  await ensureReady();
   const createdAt = nowIso();
-  const reference = generateReference();
   const preferredDate = payload.preferred_date || null;
   const preferredTime = normalizeTime(payload.preferred_time);
   const durationMinutes = getServiceDuration(payload.service);
 
-  if (preferredDate && preferredTime && !isSlotBookable(preferredDate, preferredTime, payload.service)) {
+  if (preferredDate && preferredTime && !(await isSlotBookable(preferredDate, preferredTime, payload.service))) {
     const error = new Error("That time slot is no longer available. Please choose another time.");
     error.code = "SLOT_UNAVAILABLE";
     throw error;
   }
 
-  const result = db
-    .prepare(
-      `
-      INSERT INTO bookings (
-        reference, name, phone, email, patient_name, patient_age, visit_type,
-        service, preferred_date, preferred_time, duration_minutes, message, status, source, patient_id, created_at, updated_at
-      ) VALUES (
-        @reference, @name, @phone, @email, @patient_name, @patient_age, @visit_type,
-        @service, @preferred_date, @preferred_time, @duration_minutes, @message, 'pending', @source, @patient_id, @created_at, @updated_at
-      )
-    `
-    )
-    .run({
-      reference,
-      name: payload.name,
-      phone: payload.phone,
-      email: payload.email,
-      patient_name: payload.patient_name,
-      patient_age: payload.patient_age,
-      visit_type: payload.visit_type || "new",
-      service: payload.service,
-      preferred_date: preferredDate,
-      preferred_time: preferredTime,
-      duration_minutes: durationMinutes,
-      message: payload.message,
-      source: payload.source || "website",
-      patient_id: payload.patient_id || null,
-      created_at: createdAt,
-      updated_at: createdAt,
-    });
+  const prefix = referencePrefixForDate(new Date(createdAt));
 
-  const booking = db.prepare("SELECT * FROM bookings WHERE id = ?").get(result.lastInsertRowid);
+  // Reference numbers are derived from same-day COUNT(*), which is safe under
+  // SQLite's single-writer model but not under real concurrent Postgres writers
+  // — two simultaneous bookings could compute the same count and collide on
+  // the UNIQUE reference constraint. Retry a couple of times on that specific
+  // conflict rather than adding a heavier locking scheme for a small clinic's
+  // traffic volume.
+  let booking = null;
+  let lastError = null;
+  for (let attempt = 0; attempt < 3 && !booking; attempt++) {
+    const countRow = await queryOne("SELECT COUNT(*)::int AS count FROM bookings WHERE reference LIKE $1", [
+      `${prefix}-%`,
+    ]);
+    const reference = buildReferenceForDate(new Date(createdAt), countRow.count + 1 + attempt);
+
+    try {
+      booking = await queryOne(
+        `INSERT INTO bookings (
+          reference, name, phone, email, patient_name, patient_age, visit_type,
+          service, preferred_date, preferred_time, duration_minutes, message, status, source, patient_id, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16)
+        RETURNING *`,
+        [
+          reference,
+          payload.name,
+          payload.phone,
+          payload.email,
+          payload.patient_name,
+          payload.patient_age,
+          payload.visit_type || "new",
+          payload.service,
+          preferredDate,
+          preferredTime,
+          durationMinutes,
+          payload.message,
+          payload.source || "website",
+          payload.patient_id || null,
+          createdAt,
+          createdAt,
+        ]
+      );
+    } catch (err) {
+      if (err.code === "23505" && err.constraint && err.constraint.includes("reference")) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (!booking) {
+    throw lastError || new Error("Could not generate a unique booking reference.");
+  }
 
   if (preferredDate && preferredTime) {
-    const reserved = reserveAvailabilitySlot(
-      preferredDate,
-      preferredTime,
-      booking.id,
-      durationMinutes
-    );
+    const reserved = await reserveAvailabilitySlot(preferredDate, preferredTime, booking.id, durationMinutes);
 
     if (!reserved) {
-      db.prepare("DELETE FROM bookings WHERE id = ?").run(booking.id);
+      await query("DELETE FROM bookings WHERE id = $1", [booking.id]);
       const error = new Error("That time slot is no longer available. Please choose another time.");
       error.code = "SLOT_UNAVAILABLE";
       throw error;
@@ -877,58 +772,52 @@ function createBooking(payload) {
   return booking;
 }
 
-function createContact(payload) {
-  const result = db
-    .prepare(
-      `
-      INSERT INTO messages (name, email, subject, message, is_read, created_at)
-      VALUES (@name, @email, @subject, @message, 0, @created_at)
-    `
-    )
-    .run({
-      name: payload.name,
-      email: payload.email,
-      subject: payload.subject,
-      message: payload.message,
-      created_at: nowIso(),
-    });
-
-  return db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
+async function createContact(payload) {
+  await ensureReady();
+  return queryOne(
+    `INSERT INTO messages (name, email, subject, message, is_read, created_at)
+     VALUES ($1, $2, $3, $4, 0, $5) RETURNING *`,
+    [payload.name, payload.email, payload.subject, payload.message, nowIso()]
+  );
 }
 
-function listBookings(filters = {}) {
+async function listBookings(filters = {}) {
+  await ensureReady();
   const status = filters.status && filters.status !== "all" ? filters.status : null;
   const search = filters.search ? String(filters.search).trim() : "";
 
   let sql = "SELECT * FROM bookings WHERE 1=1";
-  const params = {};
+  const params = [];
 
   if (status) {
-    sql += " AND status = @status";
-    params.status = status;
+    params.push(status);
+    sql += ` AND status = $${params.length}`;
   }
 
   if (search) {
+    params.push(`%${search}%`);
+    const p = `$${params.length}`;
     sql += `
       AND (
-        reference LIKE @search OR name LIKE @search OR phone LIKE @search
-        OR patient_name LIKE @search OR service LIKE @search OR email LIKE @search
+        reference ILIKE ${p} OR name ILIKE ${p} OR phone ILIKE ${p}
+        OR patient_name ILIKE ${p} OR service ILIKE ${p} OR email ILIKE ${p}
       )
     `;
-    params.search = `%${search}%`;
   }
 
-  sql += " ORDER BY datetime(created_at) DESC, id DESC";
+  sql += " ORDER BY created_at DESC, id DESC";
 
-  return db.prepare(sql).all(params);
+  return queryAll(sql, params);
 }
 
-function getBookingById(id) {
-  return db.prepare("SELECT * FROM bookings WHERE id = ?").get(id);
+async function getBookingById(id) {
+  await ensureReady();
+  return queryOne("SELECT * FROM bookings WHERE id = $1", [id]);
 }
 
-function updateBooking(id, payload) {
-  const existing = getBookingById(id);
+async function updateBooking(id, payload) {
+  await ensureReady();
+  const existing = await getBookingById(id);
   if (!existing) {
     return null;
   }
@@ -940,44 +829,26 @@ function updateBooking(id, payload) {
     return null;
   }
 
-  const updatedAt = nowIso();
-
   if (status === "cancelled" && existing.status !== "cancelled") {
-    releaseAvailabilityForBooking(id);
+    await releaseAvailabilityForBooking(id);
   }
 
-  const result = db
-    .prepare(
-      `
-      UPDATE bookings SET
-        status = @status,
-        confirmed_date = @confirmed_date,
-        confirmed_time = @confirmed_time,
-        assigned_to = @assigned_to,
-        admin_notes = @admin_notes,
-        updated_at = @updated_at
-      WHERE id = @id
-    `
-    )
-    .run({
-      id,
-      status,
-      confirmed_date:
-        payload.confirmed_date !== undefined
-          ? payload.confirmed_date || null
-          : existing.confirmed_date,
-      confirmed_time:
-        payload.confirmed_time !== undefined
-          ? normalizeTime(payload.confirmed_time) || null
-          : existing.confirmed_time,
-      assigned_to:
-        payload.assigned_to !== undefined ? payload.assigned_to || null : existing.assigned_to,
-      admin_notes:
-        payload.admin_notes !== undefined ? payload.admin_notes || null : existing.admin_notes,
-      updated_at: updatedAt,
-    });
+  const confirmed_date =
+    payload.confirmed_date !== undefined ? payload.confirmed_date || null : existing.confirmed_date;
+  const confirmed_time =
+    payload.confirmed_time !== undefined ? normalizeTime(payload.confirmed_time) || null : existing.confirmed_time;
+  const assigned_to = payload.assigned_to !== undefined ? payload.assigned_to || null : existing.assigned_to;
+  const admin_notes = payload.admin_notes !== undefined ? payload.admin_notes || null : existing.admin_notes;
 
-  if (result.changes === 0) {
+  const result = await query(
+    `UPDATE bookings SET
+       status = $1, confirmed_date = $2, confirmed_time = $3,
+       assigned_to = $4, admin_notes = $5, updated_at = $6
+     WHERE id = $7`,
+    [status, confirmed_date, confirmed_time, assigned_to, admin_notes, nowIso(), id]
+  );
+
+  if (result.rowCount === 0) {
     return null;
   }
 
@@ -988,42 +859,48 @@ function updateBookingStatus(id, status) {
   return updateBooking(id, { status });
 }
 
-function deleteBooking(id) {
-  releaseAvailabilityForBooking(id);
-  const result = db.prepare("DELETE FROM bookings WHERE id = ?").run(id);
-  return result.changes > 0;
+async function deleteBooking(id) {
+  await ensureReady();
+  await releaseAvailabilityForBooking(id);
+  const result = await query("DELETE FROM bookings WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
-function listMessages() {
-  return db.prepare("SELECT * FROM messages ORDER BY datetime(created_at) DESC, id DESC").all();
+async function listMessages() {
+  await ensureReady();
+  return queryAll("SELECT * FROM messages ORDER BY created_at DESC, id DESC");
 }
 
-function updateMessageRead(id, isRead) {
-  const result = db
-    .prepare("UPDATE messages SET is_read = ? WHERE id = ?")
-    .run(isRead ? 1 : 0, id);
-  return result.changes > 0;
+async function updateMessageRead(id, isRead) {
+  await ensureReady();
+  const result = await query("UPDATE messages SET is_read = $1 WHERE id = $2", [isRead ? 1 : 0, id]);
+  return result.rowCount > 0;
 }
 
-function getStats() {
+async function getStats() {
+  await ensureReady();
+  const [bookings, messages, pending, confirmed, unread] = await Promise.all([
+    queryOne("SELECT COUNT(*)::int AS count FROM bookings"),
+    queryOne("SELECT COUNT(*)::int AS count FROM messages"),
+    queryOne("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'pending'"),
+    queryOne("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'confirmed'"),
+    queryOne("SELECT COUNT(*)::int AS count FROM messages WHERE is_read = 0"),
+  ]);
+
   return {
-    bookings: db.prepare("SELECT COUNT(*) AS count FROM bookings").get().count,
-    messages: db.prepare("SELECT COUNT(*) AS count FROM messages").get().count,
-    pending: db
-      .prepare("SELECT COUNT(*) AS count FROM bookings WHERE status = 'pending'")
-      .get().count,
-    confirmed: db
-      .prepare("SELECT COUNT(*) AS count FROM bookings WHERE status = 'confirmed'")
-      .get().count,
-    unread: db.prepare("SELECT COUNT(*) AS count FROM messages WHERE is_read = 0").get().count,
+    bookings: bookings.count,
+    messages: messages.count,
+    pending: pending.count,
+    confirmed: confirmed.count,
+    unread: unread.count,
   };
 }
 
-function getDbInfo() {
+async function getDbInfo() {
+  const stats = await getStats();
   return {
-    type: "sqlite",
-    path: dbPath,
-    ...getStats(),
+    type: "postgres",
+    ...stats,
   };
 }
 
@@ -1052,353 +929,361 @@ function withBlogPost(row) {
   return { ...row, related_slugs: parseJsonField(row.related_slugs, []) };
 }
 
-function listServices({ activeOnly = false } = {}) {
+async function listServices({ activeOnly = false } = {}) {
+  await ensureReady();
   const sql = activeOnly
     ? "SELECT * FROM services WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
     : "SELECT * FROM services ORDER BY sort_order ASC, id ASC";
-  return db.prepare(sql).all().map(withService);
+  const rows = await queryAll(sql);
+  return rows.map(withService);
 }
 
-function getServiceBySlug(slug) {
-  return withService(db.prepare("SELECT * FROM services WHERE slug = ?").get(slug));
+async function getServiceBySlug(slug) {
+  await ensureReady();
+  return withService(await queryOne("SELECT * FROM services WHERE slug = $1", [slug]));
 }
 
-function getServiceById(id) {
-  return withService(db.prepare("SELECT * FROM services WHERE id = ?").get(id));
+async function getServiceById(id) {
+  await ensureReady();
+  return withService(await queryOne("SELECT * FROM services WHERE id = $1", [id]));
 }
 
-function createService(payload) {
+async function createService(payload) {
+  await ensureReady();
   const now = nowIso();
-  const result = db
-    .prepare(
-      `
-      INSERT INTO services (
-        slug, name, short_description, description, icon_path, detail_icon_path,
-        photo_url, accent_class, treat_list, whatsapp_message, sort_order, is_active, created_at, updated_at
-      ) VALUES (
-        @slug, @name, @short_description, @description, @icon_path, @detail_icon_path,
-        @photo_url, @accent_class, @treat_list, @whatsapp_message, @sort_order, @is_active, @created_at, @updated_at
-      )
-    `
-    )
-    .run({
-      slug: payload.slug,
-      name: payload.name,
-      short_description: payload.short_description || null,
-      description: payload.description || null,
-      icon_path: payload.icon_path || null,
-      detail_icon_path: payload.detail_icon_path || null,
-      photo_url: payload.photo_url || null,
-      accent_class: payload.accent_class || null,
-      treat_list: JSON.stringify(payload.treat_list || []),
-      whatsapp_message: payload.whatsapp_message || null,
-      sort_order: Number(payload.sort_order) || 0,
-      is_active: payload.is_active === false ? 0 : 1,
-      created_at: now,
-      updated_at: now,
-    });
-  return getServiceById(result.lastInsertRowid);
+  const row = await queryOne(
+    `INSERT INTO services (
+      slug, name, short_description, description, icon_path, detail_icon_path,
+      photo_url, accent_class, treat_list, whatsapp_message, sort_order, is_active, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    RETURNING *`,
+    [
+      payload.slug,
+      payload.name,
+      payload.short_description || null,
+      payload.description || null,
+      payload.icon_path || null,
+      payload.detail_icon_path || null,
+      payload.photo_url || null,
+      payload.accent_class || null,
+      JSON.stringify(payload.treat_list || []),
+      payload.whatsapp_message || null,
+      Number(payload.sort_order) || 0,
+      payload.is_active === false ? 0 : 1,
+      now,
+      now,
+    ]
+  );
+  return withService(row);
 }
 
-function updateService(id, payload) {
-  const existing = getServiceById(id);
+async function updateService(id, payload) {
+  await ensureReady();
+  const existing = await getServiceById(id);
   if (!existing) {
     return null;
   }
   const merged = { ...existing, ...payload };
-  db.prepare(
-    `
-    UPDATE services SET
-      slug = @slug, name = @name, short_description = @short_description, description = @description,
-      icon_path = @icon_path, detail_icon_path = @detail_icon_path, photo_url = @photo_url,
-      accent_class = @accent_class, treat_list = @treat_list, whatsapp_message = @whatsapp_message,
-      sort_order = @sort_order, is_active = @is_active, updated_at = @updated_at
-    WHERE id = @id
-  `
-  ).run({
-    id,
-    slug: merged.slug,
-    name: merged.name,
-    short_description: merged.short_description || null,
-    description: merged.description || null,
-    icon_path: merged.icon_path || null,
-    detail_icon_path: merged.detail_icon_path || null,
-    photo_url: merged.photo_url || null,
-    accent_class: merged.accent_class || null,
-    treat_list: JSON.stringify(payload.treat_list !== undefined ? payload.treat_list : merged.treat_list || []),
-    whatsapp_message: merged.whatsapp_message || null,
-    sort_order: Number(merged.sort_order) || 0,
-    is_active: merged.is_active === false || merged.is_active === 0 ? 0 : 1,
-    updated_at: nowIso(),
-  });
+  const result = await query(
+    `UPDATE services SET
+       slug = $1, name = $2, short_description = $3, description = $4,
+       icon_path = $5, detail_icon_path = $6, photo_url = $7,
+       accent_class = $8, treat_list = $9, whatsapp_message = $10,
+       sort_order = $11, is_active = $12, updated_at = $13
+     WHERE id = $14`,
+    [
+      merged.slug,
+      merged.name,
+      merged.short_description || null,
+      merged.description || null,
+      merged.icon_path || null,
+      merged.detail_icon_path || null,
+      merged.photo_url || null,
+      merged.accent_class || null,
+      JSON.stringify(payload.treat_list !== undefined ? payload.treat_list : merged.treat_list || []),
+      merged.whatsapp_message || null,
+      Number(merged.sort_order) || 0,
+      merged.is_active === false || merged.is_active === 0 ? 0 : 1,
+      nowIso(),
+      id,
+    ]
+  );
+  if (result.rowCount === 0) {
+    return null;
+  }
   return getServiceById(id);
 }
 
-function deleteService(id) {
-  return db.prepare("DELETE FROM services WHERE id = ?").run(id).changes > 0;
+async function deleteService(id) {
+  await ensureReady();
+  const result = await query("DELETE FROM services WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
-function listTeamMembers({ activeOnly = false } = {}) {
+async function listTeamMembers({ activeOnly = false } = {}) {
+  await ensureReady();
   const sql = activeOnly
     ? "SELECT * FROM team_members WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
     : "SELECT * FROM team_members ORDER BY sort_order ASC, id ASC";
-  return db.prepare(sql).all();
+  return queryAll(sql);
 }
 
-function getTeamMemberById(id) {
-  return db.prepare("SELECT * FROM team_members WHERE id = ?").get(id);
+async function getTeamMemberById(id) {
+  await ensureReady();
+  return queryOne("SELECT * FROM team_members WHERE id = $1", [id]);
 }
 
-function createTeamMember(payload) {
+async function createTeamMember(payload) {
+  await ensureReady();
   const now = nowIso();
-  const result = db
-    .prepare(
-      `
-      INSERT INTO team_members (
-        name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, is_active, created_at, updated_at
-      ) VALUES (
-        @name, @title, @bio, @bio_short, @photo_url, @whatsapp_message, @sort_order, @is_active, @created_at, @updated_at
-      )
-    `
-    )
-    .run({
-      name: payload.name,
-      title: payload.title || null,
-      bio: payload.bio || null,
-      bio_short: payload.bio_short || null,
-      photo_url: payload.photo_url || null,
-      whatsapp_message: payload.whatsapp_message || null,
-      sort_order: Number(payload.sort_order) || 0,
-      is_active: payload.is_active === false ? 0 : 1,
-      created_at: now,
-      updated_at: now,
-    });
-  return getTeamMemberById(result.lastInsertRowid);
+  return queryOne(
+    `INSERT INTO team_members (
+      name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, is_active, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING *`,
+    [
+      payload.name,
+      payload.title || null,
+      payload.bio || null,
+      payload.bio_short || null,
+      payload.photo_url || null,
+      payload.whatsapp_message || null,
+      Number(payload.sort_order) || 0,
+      payload.is_active === false ? 0 : 1,
+      now,
+      now,
+    ]
+  );
 }
 
-function updateTeamMember(id, payload) {
-  const existing = getTeamMemberById(id);
+async function updateTeamMember(id, payload) {
+  await ensureReady();
+  const existing = await getTeamMemberById(id);
   if (!existing) {
     return null;
   }
   const merged = { ...existing, ...payload };
-  db.prepare(
-    `
-    UPDATE team_members SET
-      name = @name, title = @title, bio = @bio, bio_short = @bio_short, photo_url = @photo_url,
-      whatsapp_message = @whatsapp_message, sort_order = @sort_order, is_active = @is_active, updated_at = @updated_at
-    WHERE id = @id
-  `
-  ).run({
-    id,
-    name: merged.name,
-    title: merged.title || null,
-    bio: merged.bio || null,
-    bio_short: merged.bio_short || null,
-    photo_url: merged.photo_url || null,
-    whatsapp_message: merged.whatsapp_message || null,
-    sort_order: Number(merged.sort_order) || 0,
-    is_active: merged.is_active === false || merged.is_active === 0 ? 0 : 1,
-    updated_at: nowIso(),
-  });
+  await query(
+    `UPDATE team_members SET
+       name = $1, title = $2, bio = $3, bio_short = $4, photo_url = $5,
+       whatsapp_message = $6, sort_order = $7, is_active = $8, updated_at = $9
+     WHERE id = $10`,
+    [
+      merged.name,
+      merged.title || null,
+      merged.bio || null,
+      merged.bio_short || null,
+      merged.photo_url || null,
+      merged.whatsapp_message || null,
+      Number(merged.sort_order) || 0,
+      merged.is_active === false || merged.is_active === 0 ? 0 : 1,
+      nowIso(),
+      id,
+    ]
+  );
   return getTeamMemberById(id);
 }
 
-function deleteTeamMember(id) {
-  return db.prepare("DELETE FROM team_members WHERE id = ?").run(id).changes > 0;
+async function deleteTeamMember(id) {
+  await ensureReady();
+  const result = await query("DELETE FROM team_members WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
-function listTestimonials({ activeOnly = false } = {}) {
+async function listTestimonials({ activeOnly = false } = {}) {
+  await ensureReady();
   const sql = activeOnly
     ? "SELECT * FROM testimonials WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
     : "SELECT * FROM testimonials ORDER BY sort_order ASC, id ASC";
-  return db.prepare(sql).all();
+  return queryAll(sql);
 }
 
-function getTestimonialById(id) {
-  return db.prepare("SELECT * FROM testimonials WHERE id = ?").get(id);
+async function getTestimonialById(id) {
+  await ensureReady();
+  return queryOne("SELECT * FROM testimonials WHERE id = $1", [id]);
 }
 
-function createTestimonial(payload) {
+async function createTestimonial(payload) {
+  await ensureReady();
   const now = nowIso();
-  const result = db
-    .prepare(
-      `
-      INSERT INTO testimonials (attribution, quote, avatar_url, stars, sort_order, is_active, created_at, updated_at)
-      VALUES (@attribution, @quote, @avatar_url, @stars, @sort_order, @is_active, @created_at, @updated_at)
-    `
-    )
-    .run({
-      attribution: payload.attribution,
-      quote: payload.quote,
-      avatar_url: payload.avatar_url || null,
-      stars: Number(payload.stars) || 5,
-      sort_order: Number(payload.sort_order) || 0,
-      is_active: payload.is_active === false ? 0 : 1,
-      created_at: now,
-      updated_at: now,
-    });
-  return getTestimonialById(result.lastInsertRowid);
+  return queryOne(
+    `INSERT INTO testimonials (attribution, quote, avatar_url, stars, sort_order, is_active, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      payload.attribution,
+      payload.quote,
+      payload.avatar_url || null,
+      Number(payload.stars) || 5,
+      Number(payload.sort_order) || 0,
+      payload.is_active === false ? 0 : 1,
+      now,
+      now,
+    ]
+  );
 }
 
-function updateTestimonial(id, payload) {
-  const existing = getTestimonialById(id);
+async function updateTestimonial(id, payload) {
+  await ensureReady();
+  const existing = await getTestimonialById(id);
   if (!existing) {
     return null;
   }
   const merged = { ...existing, ...payload };
-  db.prepare(
-    `
-    UPDATE testimonials SET
-      attribution = @attribution, quote = @quote, avatar_url = @avatar_url, stars = @stars,
-      sort_order = @sort_order, is_active = @is_active, updated_at = @updated_at
-    WHERE id = @id
-  `
-  ).run({
-    id,
-    attribution: merged.attribution,
-    quote: merged.quote,
-    avatar_url: merged.avatar_url || null,
-    stars: Number(merged.stars) || 5,
-    sort_order: Number(merged.sort_order) || 0,
-    is_active: merged.is_active === false || merged.is_active === 0 ? 0 : 1,
-    updated_at: nowIso(),
-  });
+  await query(
+    `UPDATE testimonials SET
+       attribution = $1, quote = $2, avatar_url = $3, stars = $4,
+       sort_order = $5, is_active = $6, updated_at = $7
+     WHERE id = $8`,
+    [
+      merged.attribution,
+      merged.quote,
+      merged.avatar_url || null,
+      Number(merged.stars) || 5,
+      Number(merged.sort_order) || 0,
+      merged.is_active === false || merged.is_active === 0 ? 0 : 1,
+      nowIso(),
+      id,
+    ]
+  );
   return getTestimonialById(id);
 }
 
-function deleteTestimonial(id) {
-  return db.prepare("DELETE FROM testimonials WHERE id = ?").run(id).changes > 0;
+async function deleteTestimonial(id) {
+  await ensureReady();
+  const result = await query("DELETE FROM testimonials WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
-function listBlogPosts({ category, publishedOnly = false, limit } = {}) {
+async function listBlogPosts({ category, publishedOnly = false, limit } = {}) {
+  await ensureReady();
   let sql = "SELECT * FROM blog_posts WHERE 1=1";
-  const params = {};
+  const params = [];
 
   if (publishedOnly) {
     sql += " AND status = 'published'";
   }
   if (category) {
-    sql += " AND category = @category";
-    params.category = category;
+    params.push(category);
+    sql += ` AND category = $${params.length}`;
   }
 
-  sql += " ORDER BY datetime(published_at) DESC, id DESC";
+  sql += " ORDER BY published_at DESC, id DESC";
 
   if (limit) {
-    sql += " LIMIT @limit";
-    params.limit = Number(limit);
+    params.push(Number(limit));
+    sql += ` LIMIT $${params.length}`;
   }
 
-  return db.prepare(sql).all(params).map(withBlogPost);
+  const rows = await queryAll(sql, params);
+  return rows.map(withBlogPost);
 }
 
-function getBlogPostBySlug(slug) {
-  return withBlogPost(db.prepare("SELECT * FROM blog_posts WHERE slug = ?").get(slug));
+async function getBlogPostBySlug(slug) {
+  await ensureReady();
+  return withBlogPost(await queryOne("SELECT * FROM blog_posts WHERE slug = $1", [slug]));
 }
 
-function getBlogPostById(id) {
-  return withBlogPost(db.prepare("SELECT * FROM blog_posts WHERE id = ?").get(id));
+async function getBlogPostById(id) {
+  await ensureReady();
+  return withBlogPost(await queryOne("SELECT * FROM blog_posts WHERE id = $1", [id]));
 }
 
-function createBlogPost(payload) {
+async function createBlogPost(payload) {
+  await ensureReady();
   const now = nowIso();
-  const result = db
-    .prepare(
-      `
-      INSERT INTO blog_posts (
-        slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
-        body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
-        related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
-      ) VALUES (
-        @slug, @title, @excerpt, @category, @category_label, @tag_class, @hero_image_url, @hero_image_alt,
-        @body_html, @meta_description, @keywords, @read_time, @published_at, @updated_at, @is_featured,
-        @related_slugs, @status, @whatsapp_cta_heading, @whatsapp_cta_text, @whatsapp_cta_message, @created_at
-      )
-    `
-    )
-    .run({
-      slug: payload.slug,
-      title: payload.title,
-      excerpt: payload.excerpt || null,
-      category: payload.category || null,
-      category_label: payload.category_label || null,
-      tag_class: payload.tag_class || "",
-      hero_image_url: payload.hero_image_url || null,
-      hero_image_alt: payload.hero_image_alt || null,
-      body_html: payload.body_html || "",
-      meta_description: payload.meta_description || null,
-      keywords: payload.keywords || null,
-      read_time: payload.read_time || "2 min read",
-      published_at: payload.published_at || now,
-      updated_at: now,
-      is_featured: payload.is_featured ? 1 : 0,
-      related_slugs: JSON.stringify(payload.related_slugs || []),
-      status: payload.status || "draft",
-      whatsapp_cta_heading: payload.whatsapp_cta_heading || null,
-      whatsapp_cta_text: payload.whatsapp_cta_text || null,
-      whatsapp_cta_message: payload.whatsapp_cta_message || null,
-      created_at: now,
-    });
-  return getBlogPostById(result.lastInsertRowid);
+  const row = await queryOne(
+    `INSERT INTO blog_posts (
+      slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
+      body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
+      related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+    RETURNING *`,
+    [
+      payload.slug,
+      payload.title,
+      payload.excerpt || null,
+      payload.category || null,
+      payload.category_label || null,
+      payload.tag_class || "",
+      payload.hero_image_url || null,
+      payload.hero_image_alt || null,
+      payload.body_html || "",
+      payload.meta_description || null,
+      payload.keywords || null,
+      payload.read_time || "2 min read",
+      payload.published_at || now,
+      now,
+      payload.is_featured ? 1 : 0,
+      JSON.stringify(payload.related_slugs || []),
+      payload.status || "draft",
+      payload.whatsapp_cta_heading || null,
+      payload.whatsapp_cta_text || null,
+      payload.whatsapp_cta_message || null,
+      now,
+    ]
+  );
+  return withBlogPost(row);
 }
 
-function updateBlogPost(id, payload) {
-  const existing = getBlogPostById(id);
+async function updateBlogPost(id, payload) {
+  await ensureReady();
+  const existing = await getBlogPostById(id);
   if (!existing) {
     return null;
   }
   const merged = { ...existing, ...payload };
-  db.prepare(
-    `
-    UPDATE blog_posts SET
-      slug = @slug, title = @title, excerpt = @excerpt, category = @category, category_label = @category_label,
-      tag_class = @tag_class, hero_image_url = @hero_image_url, hero_image_alt = @hero_image_alt,
-      body_html = @body_html, meta_description = @meta_description, keywords = @keywords, read_time = @read_time,
-      published_at = @published_at, updated_at = @updated_at, is_featured = @is_featured,
-      related_slugs = @related_slugs, status = @status, whatsapp_cta_heading = @whatsapp_cta_heading,
-      whatsapp_cta_text = @whatsapp_cta_text, whatsapp_cta_message = @whatsapp_cta_message
-    WHERE id = @id
-  `
-  ).run({
-    id,
-    slug: merged.slug,
-    title: merged.title,
-    excerpt: merged.excerpt || null,
-    category: merged.category || null,
-    category_label: merged.category_label || null,
-    tag_class: merged.tag_class || "",
-    hero_image_url: merged.hero_image_url || null,
-    hero_image_alt: merged.hero_image_alt || null,
-    body_html: merged.body_html || "",
-    meta_description: merged.meta_description || null,
-    keywords: merged.keywords || null,
-    read_time: merged.read_time || "2 min read",
-    published_at: merged.published_at || nowIso(),
-    updated_at: nowIso(),
-    is_featured: merged.is_featured ? 1 : 0,
-    related_slugs: JSON.stringify(
-      payload.related_slugs !== undefined ? payload.related_slugs : merged.related_slugs || []
-    ),
-    status: merged.status || "draft",
-    whatsapp_cta_heading: merged.whatsapp_cta_heading || null,
-    whatsapp_cta_text: merged.whatsapp_cta_text || null,
-    whatsapp_cta_message: merged.whatsapp_cta_message || null,
-  });
+  await query(
+    `UPDATE blog_posts SET
+       slug = $1, title = $2, excerpt = $3, category = $4, category_label = $5,
+       tag_class = $6, hero_image_url = $7, hero_image_alt = $8,
+       body_html = $9, meta_description = $10, keywords = $11, read_time = $12,
+       published_at = $13, updated_at = $14, is_featured = $15,
+       related_slugs = $16, status = $17, whatsapp_cta_heading = $18,
+       whatsapp_cta_text = $19, whatsapp_cta_message = $20
+     WHERE id = $21`,
+    [
+      merged.slug,
+      merged.title,
+      merged.excerpt || null,
+      merged.category || null,
+      merged.category_label || null,
+      merged.tag_class || "",
+      merged.hero_image_url || null,
+      merged.hero_image_alt || null,
+      merged.body_html || "",
+      merged.meta_description || null,
+      merged.keywords || null,
+      merged.read_time || "2 min read",
+      merged.published_at || nowIso(),
+      nowIso(),
+      merged.is_featured ? 1 : 0,
+      JSON.stringify(payload.related_slugs !== undefined ? payload.related_slugs : merged.related_slugs || []),
+      merged.status || "draft",
+      merged.whatsapp_cta_heading || null,
+      merged.whatsapp_cta_text || null,
+      merged.whatsapp_cta_message || null,
+      id,
+    ]
+  );
   return getBlogPostById(id);
 }
 
-function deleteBlogPost(id) {
-  return db.prepare("DELETE FROM blog_posts WHERE id = ?").run(id).changes > 0;
+async function deleteBlogPost(id) {
+  await ensureReady();
+  const result = await query("DELETE FROM blog_posts WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
-function getSetting(key) {
-  const row = db.prepare("SELECT value FROM site_settings WHERE key = ?").get(key);
+async function getSetting(key) {
+  await ensureReady();
+  const row = await queryOne("SELECT value FROM site_settings WHERE key = $1", [key]);
   return row ? parseJsonField(row.value, null) : null;
 }
 
-function listSettings() {
-  const rows = db.prepare("SELECT key, value FROM site_settings").all();
+async function listSettings() {
+  await ensureReady();
+  const rows = await queryAll("SELECT key, value FROM site_settings");
   const settings = {};
   rows.forEach((row) => {
     settings[row.key] = parseJsonField(row.value, null);
@@ -1406,13 +1291,13 @@ function listSettings() {
   return settings;
 }
 
-function setSetting(key, value) {
-  db.prepare(
-    `
-    INSERT INTO site_settings (key, value, updated_at) VALUES (@key, @value, @updated_at)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `
-  ).run({ key, value: JSON.stringify(value), updated_at: nowIso() });
+async function setSetting(key, value) {
+  await ensureReady();
+  await query(
+    `INSERT INTO site_settings (key, value, updated_at) VALUES ($1, $2, $3)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+    [key, JSON.stringify(value), nowIso()]
+  );
   return getSetting(key);
 }
 
@@ -1423,69 +1308,65 @@ function withScreeningSubmission(row) {
   return { ...row, answers: parseJsonField(row.answers, {}) };
 }
 
-function createScreeningSubmission(payload) {
-  const now = nowIso();
-  const result = db
-    .prepare(
-      `
-      INSERT INTO screening_submissions (
-        category, category_label, age_band, answers, notes, conclusion,
-        contact_name, contact_phone, contact_email, patient_id, created_at
-      ) VALUES (
-        @category, @category_label, @age_band, @answers, @notes, @conclusion,
-        @contact_name, @contact_phone, @contact_email, @patient_id, @created_at
-      )
-    `
-    )
-    .run({
-      category: payload.category,
-      category_label: payload.category_label || null,
-      age_band: payload.age_band || null,
-      answers: JSON.stringify(payload.answers || {}),
-      notes: payload.notes || null,
-      conclusion: payload.conclusion,
-      contact_name: payload.contact_name || null,
-      contact_phone: payload.contact_phone || null,
-      contact_email: payload.contact_email || null,
-      patient_id: payload.patient_id || null,
-      created_at: now,
-    });
-  return withScreeningSubmission(
-    db.prepare("SELECT * FROM screening_submissions WHERE id = ?").get(result.lastInsertRowid)
+async function createScreeningSubmission(payload) {
+  await ensureReady();
+  const row = await queryOne(
+    `INSERT INTO screening_submissions (
+      category, category_label, age_band, answers, notes, conclusion,
+      contact_name, contact_phone, contact_email, patient_id, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    RETURNING *`,
+    [
+      payload.category,
+      payload.category_label || null,
+      payload.age_band || null,
+      JSON.stringify(payload.answers || {}),
+      payload.notes || null,
+      payload.conclusion,
+      payload.contact_name || null,
+      payload.contact_phone || null,
+      payload.contact_email || null,
+      payload.patient_id || null,
+      nowIso(),
+    ]
   );
+  return withScreeningSubmission(row);
 }
 
-function listScreeningSubmissions() {
-  return db
-    .prepare("SELECT * FROM screening_submissions ORDER BY datetime(created_at) DESC, id DESC")
-    .all()
-    .map(withScreeningSubmission);
+async function listScreeningSubmissions() {
+  await ensureReady();
+  const rows = await queryAll("SELECT * FROM screening_submissions ORDER BY created_at DESC, id DESC");
+  return rows.map(withScreeningSubmission);
 }
 
-function updateScreeningSubmissionReviewed(id, isReviewed) {
-  const result = db
-    .prepare("UPDATE screening_submissions SET is_reviewed = ? WHERE id = ?")
-    .run(isReviewed ? 1 : 0, id);
-  return result.changes > 0;
+async function updateScreeningSubmissionReviewed(id, isReviewed) {
+  await ensureReady();
+  const result = await query("UPDATE screening_submissions SET is_reviewed = $1 WHERE id = $2", [
+    isReviewed ? 1 : 0,
+    id,
+  ]);
+  return result.rowCount > 0;
 }
 
-function updateScreeningSubmissionContact(id, { contact_name, contact_phone, contact_email }) {
+async function updateScreeningSubmissionContact(id, { contact_name, contact_phone, contact_email }) {
+  await ensureReady();
   // Only fills in contact info that hasn't been set yet, so the id returned by the
   // initial anonymous submission can't be reused to overwrite someone else's
   // already-submitted callback details.
-  const result = db
-    .prepare(
-      "UPDATE screening_submissions SET contact_name = ?, contact_phone = ?, contact_email = ? WHERE id = ? AND contact_phone IS NULL"
-    )
-    .run(contact_name || null, contact_phone || null, contact_email || null, id);
-  if (result.changes === 0) {
-    return null;
-  }
-  return withScreeningSubmission(db.prepare("SELECT * FROM screening_submissions WHERE id = ?").get(id));
+  const row = await queryOne(
+    `UPDATE screening_submissions
+     SET contact_name = $1, contact_phone = $2, contact_email = $3
+     WHERE id = $4 AND contact_phone IS NULL
+     RETURNING *`,
+    [contact_name || null, contact_phone || null, contact_email || null, id]
+  );
+  return withScreeningSubmission(row);
 }
 
-function deleteScreeningSubmission(id) {
-  return db.prepare("DELETE FROM screening_submissions WHERE id = ?").run(id).changes > 0;
+async function deleteScreeningSubmission(id) {
+  await ensureReady();
+  const result = await query("DELETE FROM screening_submissions WHERE id = $1", [id]);
+  return result.rowCount > 0;
 }
 
 function withoutPasswordHash(patient) {
@@ -1496,39 +1377,33 @@ function withoutPasswordHash(patient) {
   return safe;
 }
 
-function createPatient({ name, email, phone, password }) {
+async function createPatient({ name, email, phone, password }) {
+  await ensureReady();
   const now = nowIso();
   const passwordHash = bcrypt.hashSync(password, 10);
 
-  const result = db
-    .prepare(
-      `
-      INSERT INTO patients (name, email, phone, password_hash, created_at, updated_at)
-      VALUES (@name, @email, @phone, @password_hash, @created_at, @updated_at)
-    `
-    )
-    .run({
-      name,
-      email: email.toLowerCase(),
-      phone: phone || null,
-      password_hash: passwordHash,
-      created_at: now,
-      updated_at: now,
-    });
+  const row = await queryOne(
+    `INSERT INTO patients (name, email, phone, password_hash, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [name, email.toLowerCase(), phone || null, passwordHash, now, now]
+  );
 
-  return getPatientById(result.lastInsertRowid);
+  return withoutPasswordHash(row);
 }
 
-function getPatientByEmail(email) {
-  return db.prepare("SELECT * FROM patients WHERE email = ?").get(String(email || "").toLowerCase());
+async function getPatientByEmail(email) {
+  await ensureReady();
+  return queryOne("SELECT * FROM patients WHERE email = $1", [String(email || "").toLowerCase()]);
 }
 
-function getPatientById(id) {
-  return withoutPasswordHash(db.prepare("SELECT * FROM patients WHERE id = ?").get(id));
+async function getPatientById(id) {
+  await ensureReady();
+  return withoutPasswordHash(await queryOne("SELECT * FROM patients WHERE id = $1", [id]));
 }
 
-function verifyPatientPassword(email, password) {
-  const patient = getPatientByEmail(email);
+async function verifyPatientPassword(email, password) {
+  const patient = await getPatientByEmail(email);
   if (!patient) {
     return null;
   }
@@ -1538,22 +1413,22 @@ function verifyPatientPassword(email, password) {
   return withoutPasswordHash(patient);
 }
 
-function listBookingsForPatient(patientId) {
-  return db
-    .prepare("SELECT * FROM bookings WHERE patient_id = ? ORDER BY datetime(created_at) DESC, id DESC")
-    .all(patientId);
+async function listBookingsForPatient(patientId) {
+  await ensureReady();
+  return queryAll("SELECT * FROM bookings WHERE patient_id = $1 ORDER BY created_at DESC, id DESC", [patientId]);
 }
 
-function listScreeningSubmissionsForPatient(patientId) {
-  return db
-    .prepare(
-      "SELECT * FROM screening_submissions WHERE patient_id = ? ORDER BY datetime(created_at) DESC, id DESC"
-    )
-    .all(patientId)
-    .map(withScreeningSubmission);
+async function listScreeningSubmissionsForPatient(patientId) {
+  await ensureReady();
+  const rows = await queryAll(
+    "SELECT * FROM screening_submissions WHERE patient_id = $1 ORDER BY created_at DESC, id DESC",
+    [patientId]
+  );
+  return rows.map(withScreeningSubmission);
 }
 
 module.exports = {
+  ensureReady,
   createBooking,
   createContact,
   listBookings,

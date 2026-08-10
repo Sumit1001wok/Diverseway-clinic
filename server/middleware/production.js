@@ -23,7 +23,7 @@ function productionMiddleware(app) {
       return res.redirect(301, `https://${targetHost}${req.originalUrl}`);
     }
 
-    if (host && host !== canonicalHost && !host.endsWith(".onrender.com")) {
+    if (host && host !== canonicalHost && !host.endsWith(".onrender.com") && !host.endsWith(".vercel.app")) {
       return res.redirect(301, `https://${canonicalHost}${req.originalUrl}`);
     }
 
