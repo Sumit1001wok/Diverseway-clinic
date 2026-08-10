@@ -6,7 +6,6 @@ const {
   createPatient,
   getPatientByEmail,
   verifyPatientPassword,
-  linkGuestRecordsToPatient,
   listBookingsForPatient,
   listScreeningSubmissionsForPatient,
 } = require("../db");
@@ -54,7 +53,6 @@ router.post("/register", authLimiter, (req, res) => {
   }
 
   const patient = createPatient({ name, email, phone: phone || null, password });
-  linkGuestRecordsToPatient(patient.id, email, phone || null);
 
   req.session.patient = { id: patient.id, name: patient.name, email: patient.email, phone: patient.phone };
 

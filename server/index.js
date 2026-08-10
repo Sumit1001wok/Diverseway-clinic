@@ -62,13 +62,32 @@ const formLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 
+// Generous general-purpose limiter for the authenticated admin/patient API
+// surfaces. Higher ceiling than formLimiter so routine dashboard use (session
+// polling, list refreshes) never trips it, but every endpoint still has *some*
+// bound — including admin routes that also accept an ADMIN_API_KEY header, so
+// that key can't be brute-forced without limit. Login/register endpoints keep
+// their own tighter loginLimiter/authLimiter on top of this.
+const authedApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+
 app.get("/", (_req, res) => {
   res.sendFile(path.join(rootDir, "index.html"));
 });
 
+// Mounted before the generic "/api" prefix below so their own requests never
+// pass through formLimiter's shared 30-req/15-min bucket — /api/auth/session
+// in particular is polled on every public page load and would otherwise
+// starve real form submissions of their share of that budget. They get their
+// own, more generous authedApiLimiter instead of no limit at all.
+app.use("/api/admin", authedApiLimiter, adminRoutes);
+app.use("/api/auth", authedApiLimiter, authRoutes);
 app.use("/api", formLimiter, apiRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/auth", authRoutes);
 
 app.get("/blog/:slug", (req, res, next) => {
   const slug = req.params.slug.replace(/\.html$/, "");

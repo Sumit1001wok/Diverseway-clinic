@@ -28,6 +28,7 @@
     notes: "",
     tier: null,
     submitted: false,
+    submissionId: null,
   };
 
   let advanceTimer = null;
@@ -260,9 +261,9 @@
     });
   }
 
-  async function submitScreening(contact) {
+  async function submitScreening() {
     try {
-      await fetch("/api/screening", {
+      const res = await fetch("/api/screening", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -272,13 +273,30 @@
           answers: state.answers,
           notes: state.notes,
           conclusion: state.tier,
-          contact_name: contact && contact.name,
-          contact_phone: contact && contact.phone,
-          contact_email: contact && contact.email,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      state.submissionId = data.id || null;
+    } catch (err) {
+      console.error("Failed to submit screening", err);
+    }
+  }
+
+  async function submitScreeningContact(contact) {
+    if (!state.submissionId) {
+      return;
+    }
+    try {
+      await fetch(`/api/screening/${state.submissionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contact_name: contact.name,
+          contact_phone: contact.phone,
         }),
       });
     } catch (err) {
-      console.error("Failed to submit screening", err);
+      console.error("Failed to submit screening contact info", err);
     }
   }
 
@@ -330,7 +348,7 @@
 
     if (!state.submitted) {
       state.submitted = true;
-      submitScreening(null);
+      submitScreening();
     }
 
     container.querySelector("[data-restart]").addEventListener("click", () => {
@@ -342,6 +360,7 @@
       state.notes = "";
       state.tier = null;
       state.submitted = false;
+      state.submissionId = null;
       render();
     });
 
@@ -358,7 +377,7 @@
       if (!name || !phone) {
         return;
       }
-      await submitScreening({ name, phone });
+      await submitScreeningContact({ name, phone });
       document.getElementById("screening-callback-success").hidden = false;
       callbackForm.querySelector('button[type="submit"]').disabled = true;
     });

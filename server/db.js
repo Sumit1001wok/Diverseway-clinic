@@ -1469,6 +1469,21 @@ function updateScreeningSubmissionReviewed(id, isReviewed) {
   return result.changes > 0;
 }
 
+function updateScreeningSubmissionContact(id, { contact_name, contact_phone, contact_email }) {
+  // Only fills in contact info that hasn't been set yet, so the id returned by the
+  // initial anonymous submission can't be reused to overwrite someone else's
+  // already-submitted callback details.
+  const result = db
+    .prepare(
+      "UPDATE screening_submissions SET contact_name = ?, contact_phone = ?, contact_email = ? WHERE id = ? AND contact_phone IS NULL"
+    )
+    .run(contact_name || null, contact_phone || null, contact_email || null, id);
+  if (result.changes === 0) {
+    return null;
+  }
+  return withScreeningSubmission(db.prepare("SELECT * FROM screening_submissions WHERE id = ?").get(id));
+}
+
 function deleteScreeningSubmission(id) {
   return db.prepare("DELETE FROM screening_submissions WHERE id = ?").run(id).changes > 0;
 }
@@ -1521,26 +1536,6 @@ function verifyPatientPassword(email, password) {
     return null;
   }
   return withoutPasswordHash(patient);
-}
-
-function linkGuestRecordsToPatient(patientId, email, phone) {
-  const params = { patientId, email: email ? email.toLowerCase() : null, phone: phone || null };
-
-  db.prepare(
-    `
-    UPDATE bookings SET patient_id = @patientId
-    WHERE patient_id IS NULL
-      AND ((@email IS NOT NULL AND LOWER(email) = @email) OR (@phone IS NOT NULL AND phone = @phone))
-  `
-  ).run(params);
-
-  db.prepare(
-    `
-    UPDATE screening_submissions SET patient_id = @patientId
-    WHERE patient_id IS NULL
-      AND ((@email IS NOT NULL AND LOWER(contact_email) = @email) OR (@phone IS NOT NULL AND contact_phone = @phone))
-  `
-  ).run(params);
 }
 
 function listBookingsForPatient(patientId) {
@@ -1608,12 +1603,12 @@ module.exports = {
   createScreeningSubmission,
   listScreeningSubmissions,
   updateScreeningSubmissionReviewed,
+  updateScreeningSubmissionContact,
   deleteScreeningSubmission,
   createPatient,
   getPatientByEmail,
   getPatientById,
   verifyPatientPassword,
-  linkGuestRecordsToPatient,
   listBookingsForPatient,
   listScreeningSubmissionsForPatient,
 };

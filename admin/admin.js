@@ -50,12 +50,8 @@ const screeningModalDetails = document.getElementById("screening-modal-details")
 const screeningModalDeleteBtn = document.getElementById("screening-modal-delete");
 
 const WHATSAPP_PHONE = "9779845366417";
-const STATUS_LABELS = {
-  pending: "Pending",
-  confirmed: "Confirmed",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
+// STATUS_LABELS, TIER_LABELS, escapeHtml, formatDate, statusBadge, and
+// apiFetch come from ../js/dashboard-utils.js, loaded before this file.
 
 let allBookings = [];
 let allMessages = [];
@@ -69,60 +65,10 @@ let activeContentId = null;
 let allScreenings = [];
 let activeScreeningId = null;
 
-const TIER_LABELS = {
-  ontrack: "✅ On Track",
-  monitor: "⚠️ Monitor & Rescreen",
-  consult: "🟠 Consult SLP",
-  refer: "🔴 Refer Immediately",
-};
-
-const fetchOptions = {
-  credentials: "same-origin",
-  headers: {
-    "Content-Type": "application/json",
-  },
-};
-
-async function apiFetch(path, options = {}) {
-  const res = await fetch(path, {
-    ...fetchOptions,
-    ...options,
-    headers: {
-      ...fetchOptions.headers,
-      ...(options.headers || {}),
-    },
-  });
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(data.error || "Request failed");
-  }
-
-  return data;
-}
-
-function formatDate(value) {
-  if (!value) return "—";
-  const d = new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
-  return d.toLocaleString();
-}
-
 function formatShortDate(value) {
   if (!value) return "—";
   const d = new Date(`${value}T00:00:00`);
   return d.toLocaleDateString();
-}
-
-function escapeHtml(text) {
-  return String(text ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function statusBadge(status) {
-  return `<span class="status-badge status-${escapeHtml(status)}">${STATUS_LABELS[status] || status}</span>`;
 }
 
 function visitLabel(value) {

@@ -40,9 +40,7 @@
   cursor: pointer;
 }
 
-.hidden {
-  display: none !important;
-}
+/* .hidden is defined in ../css/style.css, loaded before this file */
 
 /* Login */
 .admin-login {
@@ -142,33 +140,14 @@
   margin: 0;
 }
 
-.admin-panel {
-  margin-bottom: 1.25rem;
-}
-
-.admin-panel.booking-card {
-  padding: 1.5rem;
-}
-
-.admin-section-title {
-  display: inline-block;
-  margin: 0 0 0.75rem;
-  font-size: clamp(1.35rem, 1.1rem + 0.8vw, 1.85rem);
-}
+/* .admin-panel, .admin-panel.booking-card, .admin-section-title (base), and
+   .panel-head (base) are defined in ../css/style.css — only admin-specific
+   overrides remain here. */
 
 .admin-section-title::after {
   width: 2.5rem;
   height: 3px;
   margin-top: 0.55rem;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.35rem;
 }
 
 .panel-head .admin-section-title {
@@ -348,40 +327,8 @@
   border: 0;
 }
 
-/* Tables */
-.table-wrap {
-  overflow-x: auto;
-  border-radius: 14px;
-  border: 1px solid rgba(var(--primary-rgb), 0.1);
-}
-
-.admin-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
-  background: var(--white);
-}
-
-.admin-table th,
-.admin-table td {
-  text-align: left;
-  padding: 0.75rem 0.65rem;
-  border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
-  vertical-align: top;
-}
-
-.admin-table th {
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #4a5068;
-  background: rgba(var(--primary-rgb), 0.05);
-}
-
-.admin-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
+/* Tables — .table-wrap, .admin-table (base/th/td/tbody last-child), and
+   .empty are defined in ../css/style.css; only admin-specific bits remain. */
 .admin-table a {
   color: var(--primary-dark);
   font-weight: 600;
@@ -396,10 +343,8 @@
   word-break: break-word;
 }
 
-.empty {
-  text-align: center;
-  color: #4a5068;
-}
+/* .empty and .status-badge (+ status-pending/confirmed/completed/cancelled)
+   are defined in ../css/style.css */
 
 .is-unread {
   background: rgba(var(--primary-rgb), 0.06);
@@ -407,36 +352,6 @@
 
 .booking-row.is-pending {
   background: rgba(244, 162, 97, 0.06);
-}
-
-/* Status badges */
-.status-badge {
-  display: inline-block;
-  padding: 0.22rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: capitalize;
-}
-
-.status-pending {
-  background: rgba(244, 162, 97, 0.18);
-  color: #b45309;
-}
-
-.status-confirmed {
-  background: rgba(var(--primary-rgb), 0.16);
-  color: var(--primary-dark);
-}
-
-.status-completed {
-  background: rgba(59, 130, 246, 0.15);
-  color: #1d4ed8;
-}
-
-.status-cancelled {
-  background: rgba(239, 68, 68, 0.12);
-  color: #b91c1c;
 }
 
 code {

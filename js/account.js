@@ -18,59 +18,8 @@
   const screeningsBody = document.getElementById("account-screenings-body");
   const navAccountLink = document.getElementById("nav-account-link");
 
-  const STATUS_LABELS = {
-    pending: "Pending",
-    confirmed: "Confirmed",
-    completed: "Completed",
-    cancelled: "Cancelled",
-  };
-
-  const TIER_LABELS = {
-    ontrack: "✅ On Track",
-    monitor: "⚠️ Monitor & Rescreen",
-    consult: "🟠 Consult SLP",
-    refer: "🔴 Refer Immediately",
-  };
-
-  function escapeHtml(value) {
-    return String(value || "").replace(/[&<>"']/g, (char) => {
-      switch (char) {
-        case "&":
-          return "&amp;";
-        case "<":
-          return "&lt;";
-        case ">":
-          return "&gt;";
-        case '"':
-          return "&quot;";
-        default:
-          return "&#39;";
-      }
-    });
-  }
-
-  function formatDate(value) {
-    if (!value) return "—";
-    const d = new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
-    return d.toLocaleString();
-  }
-
-  function statusBadge(status) {
-    return `<span class="status-badge status-${escapeHtml(status)}">${STATUS_LABELS[status] || status}</span>`;
-  }
-
-  async function apiFetch(path, options = {}) {
-    const res = await fetch(path, {
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      ...options,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || "Request failed");
-    }
-    return data;
-  }
+  // STATUS_LABELS, TIER_LABELS, escapeHtml, formatDate, statusBadge, and
+  // apiFetch come from js/dashboard-utils.js, loaded before this file.
 
   tabs?.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-tab]");

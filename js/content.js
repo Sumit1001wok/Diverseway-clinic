@@ -11,6 +11,18 @@ async function fetchJson(url) {
   return res.json();
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      default: return "&#39;";
+    }
+  });
+}
+
 function formatDateLabel(isoDate) {
   if (!isoDate) {
     return "";
@@ -27,36 +39,36 @@ function whatsappIcon(extraClass) {
 }
 
 function serviceCardHtml(service) {
-  return `<article class="service-card" id="${service.slug}">
+  return `<article class="service-card" id="${escapeHtml(service.slug)}">
     <div class="service-card-media">
-      <img src="${service.photo_url}" width="720" height="420" alt="${service.name}" loading="lazy">
+      <img src="${escapeHtml(service.photo_url)}" width="720" height="420" alt="${escapeHtml(service.name)}" loading="lazy">
     </div>
     <div class="service-card-body">
-      <svg class="service-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${service.icon_path}"/></svg>
-      <h3>${service.name}</h3>
-      <p>${service.short_description || ""}</p>
+      <svg class="service-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${escapeHtml(service.icon_path)}"/></svg>
+      <h3>${escapeHtml(service.name)}</h3>
+      <p>${escapeHtml(service.short_description || "")}</p>
     </div>
   </article>`;
 }
 
 function serviceDetailCardHtml(service) {
-  const treatItems = (service.treat_list || []).map((item) => `<li>${item}</li>`).join("");
-  return `<article class="service-detail-card ${service.accent_class || ""}" id="${service.slug}">
+  const treatItems = (service.treat_list || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  return `<article class="service-detail-card ${escapeHtml(service.accent_class || "")}" id="${escapeHtml(service.slug)}">
     <div class="service-detail-photo-wrap">
-      <img class="service-detail-photo" src="${service.photo_url}" alt="${service.name}" width="1400" height="600" loading="lazy">
+      <img class="service-detail-photo" src="${escapeHtml(service.photo_url)}" alt="${escapeHtml(service.name)}" width="1400" height="600" loading="lazy">
     </div>
     <div class="service-detail-inner">
     <div class="service-detail-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path fill="currentColor" d="${service.detail_icon_path}"/></svg>
+      <svg viewBox="0 0 24 24"><path fill="currentColor" d="${escapeHtml(service.detail_icon_path)}"/></svg>
     </div>
     <div class="service-detail-body">
-      <h2>${service.name}</h2>
-      <p>${service.description || ""}</p>
+      <h2>${escapeHtml(service.name)}</h2>
+      <p>${escapeHtml(service.description || "")}</p>
       <h3>What we treat</h3>
       <ul class="treat-list">${treatItems}</ul>
       <div class="service-book-actions">
         <a class="btn-primary service-book-btn" href="booking.html?service=${encodeURIComponent(service.name)}">Book online</a>
-        <a class="btn-whatsapp service-book-btn" href="https://wa.me/9779845366417?text=${encodeURIComponent(service.whatsapp_message || "")}" aria-label="Book ${service.name} on WhatsApp">
+        <a class="btn-whatsapp service-book-btn" href="https://wa.me/9779845366417?text=${encodeURIComponent(service.whatsapp_message || "")}" aria-label="Book ${escapeHtml(service.name)} on WhatsApp">
           ${whatsappIcon()}
           WhatsApp
         </a>
@@ -69,11 +81,11 @@ function serviceDetailCardHtml(service) {
 function homeTeamCardHtml(member) {
   const hasPhoto = Boolean(member.photo_url);
   return `<article class="home-team-card${hasPhoto ? "" : " home-team-card--no-photo"}" role="listitem">
-    ${hasPhoto ? `<div class="home-team-photo"><img src="${member.photo_url}" width="400" height="440" alt="${member.name}, ${member.title || ""}" loading="lazy"></div>` : ""}
+    ${hasPhoto ? `<div class="home-team-photo"><img src="${escapeHtml(member.photo_url)}" width="400" height="440" alt="${escapeHtml(member.name)}, ${escapeHtml(member.title || "")}" loading="lazy"></div>` : ""}
     <div class="home-team-text">
-      <h3 class="home-team-name">${member.name}</h3>
-      <p class="home-team-role">${member.title || ""}</p>
-      <p class="home-team-bio">${member.bio_short || ""}</p>
+      <h3 class="home-team-name">${escapeHtml(member.name)}</h3>
+      <p class="home-team-role">${escapeHtml(member.title || "")}</p>
+      <p class="home-team-bio">${escapeHtml(member.bio_short || "")}</p>
     </div>
   </article>`;
 }
@@ -83,11 +95,11 @@ function teamCardHtml(member) {
   return `<article class="team-card${hasPhoto ? "" : " team-card--no-photo"}" tabindex="0">
     <div class="team-inner">
       <div class="team-front">
-        ${hasPhoto ? `<img loading="lazy" src="${member.photo_url}" alt="Portrait of ${member.name}, ${member.title || ""}">` : ""}
+        ${hasPhoto ? `<img loading="lazy" src="${escapeHtml(member.photo_url)}" alt="Portrait of ${escapeHtml(member.name)}, ${escapeHtml(member.title || "")}">` : ""}
         <div class="team-meta${hasPhoto ? "" : " team-meta--solo"}">
-          <h3>${member.name}</h3>
-          <p class="team-title">${member.title || ""}</p>
-          <p class="team-bio">${member.bio || ""}</p>
+          <h3>${escapeHtml(member.name)}</h3>
+          <p class="team-title">${escapeHtml(member.title || "")}</p>
+          <p class="team-bio">${escapeHtml(member.bio || "")}</p>
         </div>
       </div>
       <div class="team-back">
@@ -105,44 +117,44 @@ function teamCardHtml(member) {
 function testimonialCardHtml(testimonial) {
   const stars = "★".repeat(Number(testimonial.stars) || 5);
   return `<article class="testimonial-card">
-    <img class="testimonial-avatar" src="${testimonial.avatar_url}" width="80" height="80" alt="" loading="lazy">
+    <img class="testimonial-avatar" src="${escapeHtml(testimonial.avatar_url)}" width="80" height="80" alt="" loading="lazy">
     <p class="quote-mark">&ldquo;</p>
-    <p>${testimonial.quote}</p>
+    <p>${escapeHtml(testimonial.quote)}</p>
     <p class="stars">${stars}</p>
-    <h3>- ${testimonial.attribution}</h3>
+    <h3>- ${escapeHtml(testimonial.attribution)}</h3>
   </article>`;
 }
 
 function blogCardHtml(post, { withCategory = false, withReadTime = false, hrefPrefix = "blog/" } = {}) {
-  const catAttr = withCategory ? ` data-category="${post.category}"` : "";
+  const catAttr = withCategory ? ` data-category="${escapeHtml(post.category)}"` : "";
   const meta = withReadTime
-    ? `${formatDateLabel(post.published_at)} · ${post.read_time}`
+    ? `${formatDateLabel(post.published_at)} · ${escapeHtml(post.read_time)}`
     : formatDateLabel(post.published_at);
-  const tagClass = post.tag_class ? ` ${post.tag_class}` : "";
-  return `<a class="blog-card" href="${hrefPrefix}${post.slug}"${catAttr}>
+  const tagClass = post.tag_class ? ` ${escapeHtml(post.tag_class)}` : "";
+  return `<a class="blog-card" href="${hrefPrefix}${encodeURIComponent(post.slug)}"${catAttr}>
     <div class="blog-card-media">
-      <img src="${post.hero_image_url}" width="640" height="400" alt="${post.hero_image_alt || ""}" loading="lazy">
+      <img src="${escapeHtml(post.hero_image_url)}" width="640" height="400" alt="${escapeHtml(post.hero_image_alt || "")}" loading="lazy">
     </div>
     <div class="blog-card-body">
-      <span class="blog-tag${tagClass}">${post.category_label}</span>
-      <h3>${post.title}</h3>
-      <p>${post.excerpt || ""}</p>
+      <span class="blog-tag${tagClass}">${escapeHtml(post.category_label)}</span>
+      <h3>${escapeHtml(post.title)}</h3>
+      <p>${escapeHtml(post.excerpt || "")}</p>
       <p class="blog-card-meta">${meta}</p>
     </div>
   </a>`;
 }
 
 function blogFeaturedHtml(post) {
-  const tagClass = post.tag_class ? ` ${post.tag_class}` : "";
-  return `<a class="blog-featured" href="blog/${post.slug}">
+  const tagClass = post.tag_class ? ` ${escapeHtml(post.tag_class)}` : "";
+  return `<a class="blog-featured" href="blog/${encodeURIComponent(post.slug)}">
     <div class="blog-featured-media">
-      <img src="${post.hero_image_url}" width="800" height="500" alt="${post.hero_image_alt || ""}" loading="lazy">
+      <img src="${escapeHtml(post.hero_image_url)}" width="800" height="500" alt="${escapeHtml(post.hero_image_alt || "")}" loading="lazy">
     </div>
     <div class="blog-featured-copy">
-      <span class="blog-tag${tagClass}">${post.category_label}</span>
-      <h2>${post.title}</h2>
-      <p>${post.excerpt || ""}</p>
-      <p class="blog-card-meta">${formatDateLabel(post.published_at)} · ${post.read_time}</p>
+      <span class="blog-tag${tagClass}">${escapeHtml(post.category_label)}</span>
+      <h2>${escapeHtml(post.title)}</h2>
+      <p>${escapeHtml(post.excerpt || "")}</p>
+      <p class="blog-card-meta">${formatDateLabel(post.published_at)} · ${escapeHtml(post.read_time)}</p>
     </div>
   </a>`;
 }
@@ -247,20 +259,20 @@ async function initClinicHours() {
   if (tableContainer) {
     tableContainer.innerHTML = `
       <div class="hours-row" role="row">
-        <div class="hours-cell" role="cell"><strong>${hours.weekday_label}</strong></div>
-        <div class="hours-cell" role="cell">${hours.weekday_hours}</div>
+        <div class="hours-cell" role="cell"><strong>${escapeHtml(hours.weekday_label)}</strong></div>
+        <div class="hours-cell" role="cell">${escapeHtml(hours.weekday_hours)}</div>
       </div>
       <div class="hours-row" role="row">
-        <div class="hours-cell" role="cell"><strong>${hours.weekend_label}</strong></div>
-        <div class="hours-cell" role="cell">${hours.weekend_hours}</div>
+        <div class="hours-cell" role="cell"><strong>${escapeHtml(hours.weekend_label)}</strong></div>
+        <div class="hours-cell" role="cell">${escapeHtml(hours.weekend_hours)}</div>
       </div>`;
   }
 
   if (weekdayEl) {
-    weekdayEl.innerHTML = `<strong>${hours.weekday_label}:</strong> ${hours.weekday_hours}`;
+    weekdayEl.innerHTML = `<strong>${escapeHtml(hours.weekday_label)}:</strong> ${escapeHtml(hours.weekday_hours)}`;
   }
   if (weekendEl) {
-    weekendEl.innerHTML = `<strong>${hours.weekend_label}:</strong> ${hours.weekend_hours}`;
+    weekendEl.innerHTML = `<strong>${escapeHtml(hours.weekend_label)}:</strong> ${escapeHtml(hours.weekend_hours)}`;
   }
 }
 

@@ -443,20 +443,28 @@ if (!document.querySelector(".wa-float")) {
   document.body.appendChild(waFloat);
 }
 
+// Shared, page-wide patient session check — fetched once and reused by every
+// consumer below (nav link label, booking-form prefill) instead of each
+// issuing its own /api/auth/session request.
+let patientSessionPromise = null;
+function getPatientSession() {
+  if (!patientSessionPromise) {
+    patientSessionPromise = fetch("/api/auth/session", { credentials: "same-origin" })
+      .then((res) => res.json())
+      .catch(() => ({ authenticated: false }));
+  }
+  return patientSessionPromise;
+}
+
 // Patient account nav link: swap "Login" for the patient's first name when signed in.
 // (account.html handles its own nav link via js/account.js; this covers every other page.)
 const navAccountLink = document.getElementById("nav-account-link");
 if (navAccountLink && !document.getElementById("account-login-screen")) {
-  fetch("/api/auth/session", { credentials: "same-origin" })
-    .then((res) => res.json())
-    .then((data) => {
-      if (data.authenticated && data.user) {
-        navAccountLink.textContent = data.user.name ? data.user.name.split(" ")[0] : "My Account";
-      }
-    })
-    .catch(() => {
-      // Not signed in / request failed — leave the default "Login" label.
-    });
+  getPatientSession().then((data) => {
+    if (data.authenticated && data.user) {
+      navAccountLink.textContent = data.user.name ? data.user.name.split(" ")[0] : "My Account";
+    }
+  });
 }
 
 // Back-to-top button on all pages
@@ -635,8 +643,7 @@ if (bookingButton || bookingWhatsAppButton) {
   updateServiceHelp();
   applyServiceFromUrl();
 
-  fetch("/api/auth/session", { credentials: "same-origin" })
-    .then((res) => res.json())
+  getPatientSession()
     .then((data) => {
       if (!data.authenticated || !data.user) {
         return;
