@@ -39,21 +39,6 @@ async function queryOne(text, params) {
   return rows[0] || null;
 }
 
-async function withTransaction(fn) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
 async function initSchema() {
   await query(`
     CREATE TABLE IF NOT EXISTS patients (
@@ -232,125 +217,146 @@ function buildReferenceForDate(date, seqNumber) {
   return `${referencePrefixForDate(date)}-${String(seqNumber).padStart(3, "0")}`;
 }
 
+// Builds one multi-row INSERT instead of N single-row INSERTs. Cold-start
+// seeding on a remote Postgres (e.g. Supabase over the internet, not a local
+// socket) pays real network latency per round trip — inserting ~20 seed rows
+// one at a time across 5 tables was enough sequential round trips to risk
+// exceeding a serverless function's execution timeout. This does one round
+// trip per table instead.
+function buildBulkInsert(table, columns, rows) {
+  const values = [];
+  const params = [];
+  let i = 1;
+  for (const row of rows) {
+    values.push(`(${row.map(() => `$${i++}`).join(", ")})`);
+    params.push(...row);
+  }
+  return {
+    sql: `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${values.join(", ")}`,
+    params,
+  };
+}
+
 async function seedContentDefaults() {
   const now = new Date().toISOString();
 
-  const servicesCount = await queryOne("SELECT COUNT(*)::int AS count FROM services");
+  const [servicesCount, teamCount, testimonialsCount, blogCount, settingsCount] = await Promise.all([
+    queryOne("SELECT COUNT(*)::int AS count FROM services"),
+    queryOne("SELECT COUNT(*)::int AS count FROM team_members"),
+    queryOne("SELECT COUNT(*)::int AS count FROM testimonials"),
+    queryOne("SELECT COUNT(*)::int AS count FROM blog_posts"),
+    queryOne("SELECT COUNT(*)::int AS count FROM site_settings"),
+  ]);
+
+  const seedTasks = [];
+
   if (servicesCount.count === 0) {
-    await withTransaction(async (client) => {
-      for (const row of SERVICES) {
-        await client.query(
-          `INSERT INTO services (
-            slug, name, short_description, description, icon_path, detail_icon_path,
-            photo_url, accent_class, treat_list, whatsapp_message, sort_order, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-          [
-            row.slug,
-            row.name,
-            row.short_description || null,
-            row.description || null,
-            row.icon_path || null,
-            row.detail_icon_path || null,
-            row.photo_url || null,
-            row.accent_class || null,
-            JSON.stringify(row.treat_list || []),
-            row.whatsapp_message || null,
-            row.sort_order || 0,
-            now,
-            now,
-          ]
-        );
-      }
-    });
+    const { sql, params } = buildBulkInsert(
+      "services",
+      [
+        "slug", "name", "short_description", "description", "icon_path", "detail_icon_path",
+        "photo_url", "accent_class", "treat_list", "whatsapp_message", "sort_order", "created_at", "updated_at",
+      ],
+      SERVICES.map((row) => [
+        row.slug,
+        row.name,
+        row.short_description || null,
+        row.description || null,
+        row.icon_path || null,
+        row.detail_icon_path || null,
+        row.photo_url || null,
+        row.accent_class || null,
+        JSON.stringify(row.treat_list || []),
+        row.whatsapp_message || null,
+        row.sort_order || 0,
+        now,
+        now,
+      ])
+    );
+    seedTasks.push(query(sql, params));
   }
 
-  const teamCount = await queryOne("SELECT COUNT(*)::int AS count FROM team_members");
   if (teamCount.count === 0) {
-    await withTransaction(async (client) => {
-      for (const row of TEAM_MEMBERS) {
-        await client.query(
-          `INSERT INTO team_members (
-            name, title, bio, bio_short, photo_url, whatsapp_message, sort_order, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [
-            row.name,
-            row.title || null,
-            row.bio || null,
-            row.bio_short || null,
-            row.photo_url || null,
-            row.whatsapp_message || null,
-            row.sort_order || 0,
-            now,
-            now,
-          ]
-        );
-      }
-    });
+    const { sql, params } = buildBulkInsert(
+      "team_members",
+      ["name", "title", "bio", "bio_short", "photo_url", "whatsapp_message", "sort_order", "created_at", "updated_at"],
+      TEAM_MEMBERS.map((row) => [
+        row.name,
+        row.title || null,
+        row.bio || null,
+        row.bio_short || null,
+        row.photo_url || null,
+        row.whatsapp_message || null,
+        row.sort_order || 0,
+        now,
+        now,
+      ])
+    );
+    seedTasks.push(query(sql, params));
   }
 
-  const testimonialsCount = await queryOne("SELECT COUNT(*)::int AS count FROM testimonials");
   if (testimonialsCount.count === 0) {
-    await withTransaction(async (client) => {
-      for (const row of TESTIMONIALS) {
-        await client.query(
-          `INSERT INTO testimonials (
-            attribution, quote, avatar_url, stars, sort_order, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [row.attribution, row.quote, row.avatar_url || null, row.stars || 5, row.sort_order || 0, now, now]
-        );
-      }
-    });
+    const { sql, params } = buildBulkInsert(
+      "testimonials",
+      ["attribution", "quote", "avatar_url", "stars", "sort_order", "created_at", "updated_at"],
+      TESTIMONIALS.map((row) => [
+        row.attribution,
+        row.quote,
+        row.avatar_url || null,
+        row.stars || 5,
+        row.sort_order || 0,
+        now,
+        now,
+      ])
+    );
+    seedTasks.push(query(sql, params));
   }
 
-  const blogCount = await queryOne("SELECT COUNT(*)::int AS count FROM blog_posts");
   if (blogCount.count === 0) {
-    await withTransaction(async (client) => {
-      for (const row of BLOG_POSTS) {
-        await client.query(
-          `INSERT INTO blog_posts (
-            slug, title, excerpt, category, category_label, tag_class, hero_image_url, hero_image_alt,
-            body_html, meta_description, keywords, read_time, published_at, updated_at, is_featured,
-            related_slugs, status, whatsapp_cta_heading, whatsapp_cta_text, whatsapp_cta_message, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-          [
-            row.slug,
-            row.title,
-            row.excerpt || null,
-            row.category || null,
-            row.category_label || null,
-            row.tag_class || "",
-            row.hero_image_url || null,
-            row.hero_image_alt || null,
-            row.body_html || "",
-            row.meta_description || null,
-            row.keywords || null,
-            row.read_time || "2 min read",
-            row.published_at || now,
-            now,
-            row.is_featured ? 1 : 0,
-            JSON.stringify(row.related_slugs || []),
-            row.status || "draft",
-            row.whatsapp_cta_heading || null,
-            row.whatsapp_cta_text || null,
-            row.whatsapp_cta_message || null,
-            now,
-          ]
-        );
-      }
-    });
+    const { sql, params } = buildBulkInsert(
+      "blog_posts",
+      [
+        "slug", "title", "excerpt", "category", "category_label", "tag_class", "hero_image_url", "hero_image_alt",
+        "body_html", "meta_description", "keywords", "read_time", "published_at", "updated_at", "is_featured",
+        "related_slugs", "status", "whatsapp_cta_heading", "whatsapp_cta_text", "whatsapp_cta_message", "created_at",
+      ],
+      BLOG_POSTS.map((row) => [
+        row.slug,
+        row.title,
+        row.excerpt || null,
+        row.category || null,
+        row.category_label || null,
+        row.tag_class || "",
+        row.hero_image_url || null,
+        row.hero_image_alt || null,
+        row.body_html || "",
+        row.meta_description || null,
+        row.keywords || null,
+        row.read_time || "2 min read",
+        row.published_at || now,
+        now,
+        row.is_featured ? 1 : 0,
+        JSON.stringify(row.related_slugs || []),
+        row.status || "draft",
+        row.whatsapp_cta_heading || null,
+        row.whatsapp_cta_text || null,
+        row.whatsapp_cta_message || null,
+        now,
+      ])
+    );
+    seedTasks.push(query(sql, params));
   }
 
-  const settingsCount = await queryOne("SELECT COUNT(*)::int AS count FROM site_settings");
   if (settingsCount.count === 0) {
-    await withTransaction(async (client) => {
-      for (const [key, value] of Object.entries(SETTINGS)) {
-        await client.query(
-          "INSERT INTO site_settings (key, value, updated_at) VALUES ($1, $2, $3)",
-          [key, JSON.stringify(value), now]
-        );
-      }
-    });
+    const { sql, params } = buildBulkInsert(
+      "site_settings",
+      ["key", "value", "updated_at"],
+      Object.entries(SETTINGS).map(([key, value]) => [key, JSON.stringify(value), now])
+    );
+    seedTasks.push(query(sql, params));
   }
+
+  await Promise.all(seedTasks);
 }
 
 let readyPromise = null;
