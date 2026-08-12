@@ -118,9 +118,22 @@ function renderStats(bookings, messages) {
   `;
 }
 
+const PAYMENT_STATUS_LABELS = {
+  pending: "⏳ Awaiting payment",
+  paid: "✅ Paid",
+  failed: "❌ Failed",
+  expired: "⌛ Expired",
+};
+
+function paymentBadge(row) {
+  const label = PAYMENT_STATUS_LABELS[row.payment_status] || row.payment_status || "—";
+  const amount = row.payment_amount ? ` (Rs ${row.payment_amount})` : "";
+  return `${escapeHtml(label)}${escapeHtml(amount)}`;
+}
+
 function renderBookings(rows) {
   if (rows.length === 0) {
-    bookingsBody.innerHTML = `<tr><td colspan="9" class="empty">No bookings match your filters.</td></tr>`;
+    bookingsBody.innerHTML = `<tr><td colspan="10" class="empty">No bookings match your filters.</td></tr>`;
     return;
   }
 
@@ -142,6 +155,7 @@ function renderBookings(rows) {
       <td>${escapeHtml(row.service)}<br><span class="muted">${visitLabel(row.visit_type)} · ${row.duration_minutes || "—"} min</span></td>
       <td>${escapeHtml([formatShortDate(row.preferred_date), row.preferred_time].filter(Boolean).join(" ") || "—")}</td>
       <td>${statusBadge(row.status)}</td>
+      <td>${paymentBadge(row)}</td>
       <td>${escapeHtml(row.assigned_to || "—")}</td>
       <td>
         <button type="button" class="btn-outline btn-sm" data-manage-id="${row.id}">Manage</button>
@@ -235,6 +249,7 @@ function openBookingModal(id) {
     <div class="detail-item"><span>Patient</span><strong>${escapeHtml(booking.patient_name || "—")}</strong>${booking.patient_age ? `<br>${escapeHtml(booking.patient_age)}` : ""}</div>
     <div class="detail-item"><span>Service</span><strong>${escapeHtml(booking.service)}</strong><br>${visitLabel(booking.visit_type)} · ${booking.duration_minutes || "—"} min</div>
     <div class="detail-item"><span>Preferred slot</span><strong>${escapeHtml([formatShortDate(booking.preferred_date), booking.preferred_time].filter(Boolean).join(" ") || "Not specified")}</strong></div>
+    <div class="detail-item"><span>Advance payment</span><strong>${paymentBadge(booking)}</strong></div>
     <div class="detail-item detail-full"><span>Client message</span><p>${escapeHtml(booking.message || "—")}</p></div>
   `;
 

@@ -3,6 +3,9 @@
 const express = require("express");
 const {
   createBooking,
+  getBookingByPaymentReference,
+  markBookingPaymentPaid,
+  markBookingPaymentFailed,
   createContact,
   getDbInfo,
   listAvailableStartTimes,
@@ -16,7 +19,12 @@ const {
   updateScreeningSubmissionContact,
 } = require("../db");
 const { notifyNewBooking, notifyNewContact, notifyScreeningCallback } = require("../whatsapp");
+const { buildPaymentForm, decodeAndVerifyCallback, checkTransactionStatus } = require("../esewa");
 const { asyncHandler } = require("../asyncHandler");
+
+function siteUrl(req) {
+  return process.env.SITE_URL || `${req.protocol}://${req.get("host")}`;
+}
 
 const router = express.Router();
 
@@ -148,13 +156,24 @@ router.post(
         patient_id: req.session?.patient?.id || null,
       });
 
-      notifyNewBooking(row);
+      // Booking is only finalized once the advance payment succeeds — the
+      // clinic isn't notified and the slot isn't permanently held until then
+      // (see releaseStalePendingPayments for what happens if checkout is
+      // abandoned). The WhatsApp notification fires from the success callback.
+      const base = siteUrl(req);
+      const payment = buildPaymentForm({
+        amount: row.payment_amount,
+        transactionUuid: row.payment_reference,
+        successUrl: `${base}/api/payment/esewa/success`,
+        failureUrl: `${base}/api/payment/esewa/failure?transaction_uuid=${encodeURIComponent(row.payment_reference)}`,
+      });
 
       res.status(201).json({
         ok: true,
         id: row.id,
         reference: row.reference,
-        message: `Appointment request received. Reference: ${row.reference}. We will contact you shortly.`,
+        payment_amount: row.payment_amount,
+        payment,
       });
     } catch (err) {
       if (err.code === "SLOT_UNAVAILABLE") {
@@ -162,6 +181,66 @@ router.post(
       }
       throw err;
     }
+  })
+);
+
+router.get(
+  "/payment/esewa/success",
+  asyncHandler(async (req, res) => {
+    const base = siteUrl(req);
+    const data = String(req.query.data || "");
+    const payload = data ? decodeAndVerifyCallback(data) : null;
+
+    if (!payload || !payload.transaction_uuid) {
+      return res.redirect(`${base}/booking.html?payment=failed`);
+    }
+
+    const booking = await getBookingByPaymentReference(payload.transaction_uuid);
+    if (!booking) {
+      return res.redirect(`${base}/booking.html?payment=failed`);
+    }
+
+    if (booking.payment_status === "paid") {
+      return res.redirect(`${base}/booking.html?payment=success&ref=${encodeURIComponent(booking.reference)}`);
+    }
+
+    // Never trust the redirect payload alone — independently re-check the
+    // transaction status directly with eSewa's server before marking paid.
+    let status;
+    try {
+      status = await checkTransactionStatus({
+        totalAmount: booking.payment_amount,
+        transactionUuid: booking.payment_reference,
+      });
+    } catch (err) {
+      console.error("eSewa status check failed:", err.message);
+      return res.redirect(`${base}/booking.html?payment=failed&ref=${encodeURIComponent(booking.reference)}`);
+    }
+
+    if (status.status !== "COMPLETE" || Number(status.total_amount) !== Number(booking.payment_amount)) {
+      return res.redirect(`${base}/booking.html?payment=failed&ref=${encodeURIComponent(booking.reference)}`);
+    }
+
+    const paidBooking = await markBookingPaymentPaid(booking.payment_reference, status.ref_id);
+    if (paidBooking) {
+      notifyNewBooking(paidBooking);
+    }
+
+    res.redirect(`${base}/booking.html?payment=success&ref=${encodeURIComponent(booking.reference)}`);
+  })
+);
+
+router.get(
+  "/payment/esewa/failure",
+  asyncHandler(async (req, res) => {
+    const base = siteUrl(req);
+    const transactionUuid = String(req.query.transaction_uuid || "");
+
+    if (transactionUuid) {
+      await markBookingPaymentFailed(transactionUuid);
+    }
+
+    res.redirect(`${base}/booking.html?payment=failed`);
   })
 );
 

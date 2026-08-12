@@ -92,9 +92,28 @@ server {
 ## Booking system
 
 - **Admin login:** `/admin` — manage bookings, contact messages, and available times
-- **Availability:** Admin opens 15-minute blocks (7 AM – 8 PM). Patients pick service → date → available slot
-- **Session lengths:** Speech & voice therapy 30 min; occupational, behaviour, counselling & others 45 min
+- **Availability:** Admin opens 15-minute blocks (7 AM – 8 PM), per therapy — each service has its own independent set of open times, so two different therapies can be booked at the same clock time (different therapists) without conflict
+- **Session lengths:** Consultation 15 min; speech & voice therapy 30 min; occupational, behaviour, counselling & others 45 min
 - **Database:** Postgres — persists automatically, no separate backup/disk setup needed
+
+### Advance payment (eSewa)
+
+Every booking requires a flat advance payment (`ADVANCE_PAYMENT_AMOUNT`, default Rs 200) via eSewa before it's confirmed:
+
+1. Patient submits the booking form → a booking row is created and the slot is reserved with `payment_status: pending`.
+2. Browser redirects to eSewa to pay the advance.
+3. On success, the server independently re-verifies the transaction directly with eSewa's status-check API (never trusts the redirect alone) → marks `payment_status: paid` → sends the WhatsApp notification.
+4. On failure/cancellation, the booking is cancelled and the slot released immediately.
+5. If a patient abandons checkout without explicitly cancelling, the slot self-releases after 20 minutes the next time anyone checks availability for that date — no cron job needed.
+
+**Going live:** the app ships configured against eSewa's public sandbox by default (safe — it only accepts test payments, never real money). To accept real payments, get a merchant account at [merchant.esewa.com.np](https://merchant.esewa.com.np) and set these four production values as environment variables — no code changes needed:
+
+```
+ESEWA_PRODUCT_CODE=<your merchant product code>
+ESEWA_SECRET_KEY=<your merchant secret key>
+ESEWA_FORM_URL=https://epay.esewa.com.np/api/epay/main/v2/form
+ESEWA_STATUS_CHECK_URL=https://epay.esewa.com.np/api/epay/transaction/status/
+```
 
 ### Admin quick start
 

@@ -516,6 +516,46 @@ if (bookingButton || bookingWhatsAppButton) {
   const errorEl = document.getElementById("bk-error");
   const successEl = document.getElementById("bk-success");
 
+  function redirectToEsewa(payment) {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = payment.formUrl;
+    Object.entries(payment.fields).forEach(([key, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  // After returning from eSewa, the URL carries ?payment=success|failed&ref=...
+  (function handlePaymentReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    if (!payment) {
+      return;
+    }
+
+    const ref = params.get("ref");
+    if (payment === "success") {
+      setFormFeedback(errorEl, successEl, {
+        success: ref
+          ? `Payment received — your appointment request is confirmed! Reference: ${ref}. We will contact you shortly.`
+          : "Payment received — your appointment request is confirmed! We will contact you shortly.",
+      });
+    } else {
+      setFormFeedback(errorEl, successEl, {
+        error: "Payment was not completed, so the booking wasn't confirmed. Please try again.",
+      });
+    }
+
+    // Drop the query params so refreshing the page doesn't re-show this message.
+    window.history.replaceState({}, "", window.location.pathname);
+  })();
+
   attachLiveValidation(nameInput, VALIDATORS.nonEmpty);
   attachLiveValidation(phoneInput, VALIDATORS.phone);
   attachLiveValidation(emailInput, VALIDATORS.email);
@@ -722,23 +762,12 @@ if (bookingButton || bookingWhatsAppButton) {
 
       try {
         const data = await postJson("/api/booking", fields);
-        setFormFeedback(errorEl, successEl, { success: data.message });
-        nameInput.value = "";
-        phoneInput.value = "";
-        if (emailInput) emailInput.value = "";
-        if (visitTypeInput) visitTypeInput.value = "new";
-        if (patientNameInput) patientNameInput.value = "";
-        if (patientAgeInput) patientAgeInput.value = "";
-        if (serviceInput) serviceInput.selectedIndex = 0;
-        if (dateInput) dateInput.value = "";
-        if (timeInput) {
-          timeInput.innerHTML = `<option value="">Select a date first</option>`;
-          timeInput.disabled = true;
-        }
-        if (timeHelp) {
-          timeHelp.textContent = "Choose a date to see available appointment times.";
-        }
-        if (messageInput) messageInput.value = "";
+        bookingButton.textContent = "Redirecting to payment…";
+        setFormFeedback(errorEl, successEl, {
+          success: `Reference ${data.reference} — redirecting you to pay the Rs ${data.payment_amount} advance via eSewa…`,
+        });
+        redirectToEsewa(data.payment);
+        return;
       } catch (err) {
         setFormFeedback(errorEl, successEl, { error: err.message });
       } finally {

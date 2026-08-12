@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const { SERVICES, TEAM_MEMBERS, TESTIMONIALS, BLOG_POSTS, SETTINGS } = require("./seedContent");
@@ -87,6 +88,27 @@ async function migrateAvailabilityServiceColumn() {
   }
 }
 
+// Adds advance-payment tracking columns to a bookings table that predates
+// them (the live database already had this table before payments were
+// introduced). Idempotent — safe to run on every cold start.
+async function migrateBookingPaymentColumns() {
+  await query(`
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending';
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_amount INTEGER;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_reference TEXT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_ref_id TEXT;
+  `);
+
+  const existingConstraint = await queryOne(`
+    SELECT constraint_name FROM information_schema.table_constraints
+    WHERE table_name = 'bookings' AND constraint_type = 'UNIQUE'
+      AND constraint_name = 'bookings_payment_reference_key'
+  `);
+  if (!existingConstraint) {
+    await query(`ALTER TABLE bookings ADD CONSTRAINT bookings_payment_reference_key UNIQUE (payment_reference)`);
+  }
+}
+
 async function initSchema() {
   await query(`
     CREATE TABLE IF NOT EXISTS patients (
@@ -120,6 +142,10 @@ async function initSchema() {
       source TEXT DEFAULT 'website',
       duration_minutes INTEGER,
       patient_id INTEGER REFERENCES patients(id),
+      payment_status TEXT NOT NULL DEFAULT 'pending',
+      payment_amount INTEGER,
+      payment_reference TEXT UNIQUE,
+      payment_ref_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT
     );
@@ -238,6 +264,7 @@ async function initSchema() {
   `);
 
   await migrateAvailabilityServiceColumn();
+  await migrateBookingPaymentColumns();
 
   await query(`
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
@@ -475,6 +502,12 @@ const SERVICE_DURATIONS = {
 };
 
 const DEFAULT_DURATION_MINUTES = 45;
+const ADVANCE_PAYMENT_AMOUNT = Number(process.env.ADVANCE_PAYMENT_AMOUNT) || 200;
+// A pending-payment booking still holds its slot reservation; if the patient
+// never completes (or abandons) checkout, the slot would stay blocked
+// forever. Anything past this age is treated as abandoned and released the
+// next time availability is checked for that date — see releaseStalePendingPayments.
+const PAYMENT_PENDING_EXPIRY_MINUTES = 20;
 const SLOT_INTERVAL_MINUTES = 15;
 const CLINIC_OPEN_MINUTES = 7 * 60;
 const CLINIC_CLOSE_MINUTES = 20 * 60;
@@ -620,6 +653,7 @@ async function isStartTimeAvailable(date, startTime, durationMinutes, service, e
 
 async function listAvailableStartTimes(date, service) {
   await ensureReady();
+  await releaseStalePendingPayments();
   const durationMinutes = getServiceDuration(service);
   const starts = [];
 
@@ -760,6 +794,7 @@ async function isSlotBookable(date, time, service) {
 
 async function createBooking(payload) {
   await ensureReady();
+  await releaseStalePendingPayments();
   const createdAt = nowIso();
   const preferredDate = payload.preferred_date || null;
   const preferredTime = normalizeTime(payload.preferred_time);
@@ -791,8 +826,9 @@ async function createBooking(payload) {
       booking = await queryOne(
         `INSERT INTO bookings (
           reference, name, phone, email, patient_name, patient_age, visit_type,
-          service, preferred_date, preferred_time, duration_minutes, message, status, source, patient_id, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16)
+          service, preferred_date, preferred_time, duration_minutes, message, status, source, patient_id,
+          payment_status, payment_amount, payment_reference, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, 'pending', $15, $16, $17, $18)
         RETURNING *`,
         [
           reference,
@@ -809,6 +845,8 @@ async function createBooking(payload) {
           payload.message,
           payload.source || "website",
           payload.patient_id || null,
+          ADVANCE_PAYMENT_AMOUNT,
+          crypto.randomUUID(),
           createdAt,
           createdAt,
         ]
@@ -844,6 +882,57 @@ async function createBooking(payload) {
   }
 
   return booking;
+}
+
+async function getBookingByPaymentReference(paymentReference) {
+  await ensureReady();
+  return queryOne("SELECT * FROM bookings WHERE payment_reference = $1", [paymentReference]);
+}
+
+async function markBookingPaymentPaid(paymentReference, refId) {
+  await ensureReady();
+  return queryOne(
+    `UPDATE bookings SET payment_status = 'paid', payment_ref_id = $1, updated_at = $2
+     WHERE payment_reference = $3 AND payment_status = 'pending'
+     RETURNING *`,
+    [refId || null, nowIso(), paymentReference]
+  );
+}
+
+async function markBookingPaymentFailed(paymentReference) {
+  await ensureReady();
+  const booking = await getBookingByPaymentReference(paymentReference);
+  if (!booking || booking.payment_status !== "pending") {
+    return null;
+  }
+
+  await releaseAvailabilityForBooking(booking.id);
+  return queryOne(
+    `UPDATE bookings SET payment_status = 'failed', status = 'cancelled', updated_at = $1
+     WHERE id = $2
+     RETURNING *`,
+    [nowIso(), booking.id]
+  );
+}
+
+// Frees up slots held by abandoned payment attempts — a patient who starts
+// checkout but never completes or explicitly cancels it would otherwise
+// block that slot forever. Cheap to call on every availability check since
+// it's scoped to old-enough rows only; no separate cron job needed.
+async function releaseStalePendingPayments() {
+  const cutoff = new Date(Date.now() - PAYMENT_PENDING_EXPIRY_MINUTES * 60 * 1000).toISOString();
+  const stale = await queryAll(
+    `SELECT id FROM bookings WHERE payment_status = 'pending' AND status = 'pending' AND created_at < $1`,
+    [cutoff]
+  );
+
+  for (const row of stale) {
+    await releaseAvailabilityForBooking(row.id);
+    await query(
+      `UPDATE bookings SET payment_status = 'expired', status = 'cancelled', updated_at = $1 WHERE id = $2`,
+      [nowIso(), row.id]
+    );
+  }
 }
 
 async function createContact(payload) {
@@ -1504,6 +1593,10 @@ async function listScreeningSubmissionsForPatient(patientId) {
 module.exports = {
   ensureReady,
   createBooking,
+  getBookingByPaymentReference,
+  markBookingPaymentPaid,
+  markBookingPaymentFailed,
+  ADVANCE_PAYMENT_AMOUNT,
   createContact,
   listBookings,
   getBookingById,
