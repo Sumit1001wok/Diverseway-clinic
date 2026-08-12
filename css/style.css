@@ -145,16 +145,22 @@ main {
   position: sticky;
   top: 0;
   z-index: 1000;
-  background-color: rgba(255, 255, 255, 0.88);
+  background-color: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid transparent;
-  transition: box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+  transition: box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease, backdrop-filter 0.25s ease;
 }
 
 .site-header.is-scrolled {
-  box-shadow: 0 10px 28px rgba(26, 26, 46, 0.1);
-  border-bottom-color: rgba(var(--primary-rgb), 0.12);
+  background-color: transparent;
+  /* Fully transparent (no color fill) still needs SOME blur, or page
+     content scrolling underneath the sticky header visually collides
+     with the nav text and makes it unreadable. */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: none;
+  border-bottom-color: transparent;
 }
 
 .navbar {
