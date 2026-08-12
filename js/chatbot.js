@@ -57,6 +57,142 @@
   const input = panel.querySelector("#chatbot-input");
   const closeBtn = panel.querySelector(".chatbot-close");
 
+  // Draggable launcher button — position persists across visits. Until the
+  // user drags it once, it stays on the CSS default (bottom-left, with its
+  // own mobile breakpoint), so nothing here overrides layout unnecessarily.
+  const POSITION_KEY = "chatbot-position";
+  const DRAG_THRESHOLD = 6;
+  const EDGE_GAP = 8;
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), Math.max(min, max));
+  }
+
+  function loadPosition() {
+    try {
+      const raw = localStorage.getItem(POSITION_KEY);
+      const pos = raw ? JSON.parse(raw) : null;
+      if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+        return pos;
+      }
+    } catch {
+      // ignore malformed/unavailable storage
+    }
+    return null;
+  }
+
+  function savePosition(pos) {
+    try {
+      localStorage.setItem(POSITION_KEY, JSON.stringify(pos));
+    } catch {
+      // storage unavailable (private browsing, quota) — position just won't persist
+    }
+  }
+
+  function positionPanel() {
+    if (panel.classList.contains("hidden")) {
+      return;
+    }
+    const btnRect = floatBtn.getBoundingClientRect();
+    const panelWidth = panel.offsetWidth;
+    const panelHeight = panel.offsetHeight;
+    const gap = 12;
+
+    let left = clamp(btnRect.left, EDGE_GAP, window.innerWidth - panelWidth - EDGE_GAP);
+
+    const spaceAbove = btnRect.top - gap;
+    const spaceBelow = window.innerHeight - btnRect.bottom - gap;
+    let top = spaceAbove >= panelHeight || spaceAbove >= spaceBelow
+      ? btnRect.top - gap - panelHeight
+      : btnRect.bottom + gap;
+    top = clamp(top, EDGE_GAP, window.innerHeight - panelHeight - EDGE_GAP);
+
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+  }
+
+  function applyPosition(pos) {
+    const rect = floatBtn.getBoundingClientRect();
+    const x = clamp(pos.x, EDGE_GAP, window.innerWidth - rect.width - EDGE_GAP);
+    const y = clamp(pos.y, EDGE_GAP, window.innerHeight - rect.height - EDGE_GAP);
+    floatBtn.style.left = `${x}px`;
+    floatBtn.style.top = `${y}px`;
+    floatBtn.style.right = "auto";
+    floatBtn.style.bottom = "auto";
+    positionPanel();
+  }
+
+  const storedPosition = loadPosition();
+  if (storedPosition) {
+    applyPosition(storedPosition);
+  }
+
+  window.addEventListener("resize", () => {
+    // Only reclamp if the button has ever been dragged from its CSS
+    // default — otherwise let the stylesheet's own mobile breakpoint handle it.
+    if (!floatBtn.style.left) {
+      return;
+    }
+    const rect = floatBtn.getBoundingClientRect();
+    applyPosition({ x: rect.left, y: rect.top });
+  });
+
+  let dragging = false;
+  let dragMoved = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let btnStartX = 0;
+  let btnStartY = 0;
+
+  floatBtn.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    dragging = true;
+    dragMoved = false;
+    const rect = floatBtn.getBoundingClientRect();
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    btnStartX = rect.left;
+    btnStartY = rect.top;
+    floatBtn.setPointerCapture(event.pointerId);
+  });
+
+  floatBtn.addEventListener("pointermove", (event) => {
+    if (!dragging) {
+      return;
+    }
+    const dx = event.clientX - dragStartX;
+    const dy = event.clientY - dragStartY;
+    if (!dragMoved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      dragMoved = true;
+      floatBtn.classList.add("chatbot-float-dragging");
+    }
+    if (dragMoved) {
+      applyPosition({ x: btnStartX + dx, y: btnStartY + dy });
+    }
+  });
+
+  function endDrag(event) {
+    if (!dragging) {
+      return;
+    }
+    dragging = false;
+    floatBtn.classList.remove("chatbot-float-dragging");
+    if (dragMoved) {
+      const rect = floatBtn.getBoundingClientRect();
+      savePosition({ x: rect.left, y: rect.top });
+    }
+    if (floatBtn.hasPointerCapture(event.pointerId)) {
+      floatBtn.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  floatBtn.addEventListener("pointerup", endDrag);
+  floatBtn.addEventListener("pointercancel", endDrag);
+
   function appendBubble(role, text) {
     const bubble = document.createElement("div");
     bubble.className = `chatbot-bubble chatbot-bubble-${role}`;
@@ -68,6 +204,7 @@
 
   function openPanel() {
     panel.classList.remove("hidden");
+    positionPanel();
     if (!messages.length) {
       appendBubble(
         "assistant",
@@ -82,6 +219,10 @@
   }
 
   floatBtn.addEventListener("click", () => {
+    if (dragMoved) {
+      dragMoved = false;
+      return;
+    }
     if (panel.classList.contains("hidden")) {
       openPanel();
     } else {
