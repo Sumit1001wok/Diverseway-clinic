@@ -676,6 +676,59 @@ async function listAvailableStartTimes(date, service) {
   return starts;
 }
 
+// The server runs in UTC (Vercel's default), but slot times are clinic-local
+// wall-clock (Nepal, UTC+5:45) — shifting the timestamp before reading its
+// UTC getters is a simple way to read "Nepal local" date/time without
+// touching the process's actual timezone.
+const NEPAL_OFFSET_MINUTES = 5 * 60 + 45;
+function nepalNow() {
+  return new Date(Date.now() + NEPAL_OFFSET_MINUTES * 60 * 1000);
+}
+
+function isoDateOnly(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+// Scans forward from today, per service, to find the next few open slots —
+// powers the "next available" quick-pick shown on the booking page before a
+// patient has chosen a date. Capped at MAX_LOOKAHEAD_DAYS so an empty
+// calendar (nothing opened yet) doesn't scan indefinitely; each date lookup
+// reuses the same accurate consecutive-slot check as normal booking, so a
+// suggested time is always genuinely bookable. Already-passed times today
+// are filtered out — otherwise "Today 7:00 AM" could show as a one-click
+// suggestion at 3pm.
+const UPCOMING_SLOTS_LOOKAHEAD_DAYS = 7;
+
+async function listUpcomingSlotsByService({ limit = 3, services } = {}) {
+  await ensureReady();
+  const serviceList = services || Object.keys(SERVICE_DURATIONS).filter((name) => name !== "Other");
+  const nowNepal = nepalNow();
+  const nowMinutes = nowNepal.getUTCHours() * 60 + nowNepal.getUTCMinutes();
+  const result = {};
+
+  for (const service of serviceList) {
+    const found = [];
+    for (let dayOffset = 0; dayOffset < UPCOMING_SLOTS_LOOKAHEAD_DAYS && found.length < limit; dayOffset++) {
+      const date = new Date(nowNepal);
+      date.setUTCDate(date.getUTCDate() + dayOffset);
+      const dateStr = isoDateOnly(date);
+
+      let starts = await listAvailableStartTimes(dateStr, service);
+      if (dayOffset === 0) {
+        starts = starts.filter((start) => timeToMinutes(start.time) > nowMinutes);
+      }
+
+      for (const start of starts) {
+        if (found.length >= limit) break;
+        found.push({ date: dateStr, ...start });
+      }
+    }
+    result[service] = found;
+  }
+
+  return result;
+}
+
 async function getAvailabilitySlot(date, time, service) {
   const slotTime = normalizeTime(time);
   if (!date || !slotTime) {
@@ -1608,6 +1661,7 @@ module.exports = {
   getDbInfo,
   listAvailabilityForDate,
   listAvailableStartTimes,
+  listUpcomingSlotsByService,
   addAvailabilitySlot,
   addStandardAvailability,
   setAvailabilitySlot,

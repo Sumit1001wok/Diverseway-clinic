@@ -9,6 +9,7 @@ const {
   createContact,
   getDbInfo,
   listAvailableStartTimes,
+  listUpcomingSlotsByService,
   getServiceDuration,
   listServices,
   listTeamMembers,
@@ -104,6 +105,14 @@ router.get(
     const slots = await listAvailableStartTimes(date, service);
 
     res.json({ date, service, duration_minutes: durationMinutes, data: slots });
+  })
+);
+
+router.get(
+  "/availability/upcoming",
+  asyncHandler(async (_req, res) => {
+    const data = await listUpcomingSlotsByService({ limit: 3 });
+    res.json({ data });
   })
 );
 

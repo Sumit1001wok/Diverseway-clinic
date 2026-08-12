@@ -684,6 +684,97 @@ if (bookingButton || bookingWhatsAppButton) {
   updateServiceHelp();
   applyServiceFromUrl();
 
+  function escapeHtml(text) {
+    return String(text ?? "").replace(/[&<>"']/g, (char) => {
+      switch (char) {
+        case "&": return "&amp;";
+        case "<": return "&lt;";
+        case ">": return "&gt;";
+        case '"': return "&quot;";
+        default: return "&#39;";
+      }
+    });
+  }
+
+  function quickSlotDateLabel(dateStr) {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+    if (dateStr === todayStr) return "Today";
+    if (dateStr === tomorrowStr) return "Tomorrow";
+
+    const parsed = new Date(`${dateStr}T00:00:00`);
+    return parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  async function selectQuickSlot(service, date, time) {
+    if (!serviceInput || !dateInput || !timeInput) {
+      return;
+    }
+
+    serviceInput.value = service;
+    updateServiceHelp();
+    dateInput.value = date;
+    await loadAvailableTimes();
+    timeInput.value = time;
+
+    document.getElementById("bk-name")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("bk-name")?.focus();
+  }
+
+  async function loadQuickSlots() {
+    const container = document.getElementById("quick-slots-list");
+    if (!container) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/availability/upcoming");
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Could not load available times.");
+      }
+
+      const groups = Object.entries(data.data).filter(([, slots]) => slots.length > 0);
+
+      if (!groups.length) {
+        container.innerHTML = `<p class="empty quick-slots-empty">No open times posted yet — submit the form below and we'll contact you to schedule, or message us on WhatsApp.</p>`;
+        return;
+      }
+
+      container.innerHTML = groups
+        .map(([service, slots]) => {
+          const chips = slots
+            .map(
+              (slot) => `
+              <button type="button" class="quick-slot-chip" data-service="${escapeHtml(service)}" data-date="${slot.date}" data-time="${slot.time}">
+                ${escapeHtml(quickSlotDateLabel(slot.date))} · ${escapeHtml(slot.label.split(" – ")[0])}
+              </button>`
+            )
+            .join("");
+          return `
+            <div class="quick-slots-group">
+              <h3 class="quick-slots-service">${escapeHtml(service)} <span class="muted">(${slots[0].duration_minutes} min)</span></h3>
+              <div class="quick-slots-chips">${chips}</div>
+            </div>`;
+        })
+        .join("");
+
+      container.querySelectorAll("[data-service]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          selectQuickSlot(chip.dataset.service, chip.dataset.date, chip.dataset.time);
+        });
+      });
+    } catch (err) {
+      container.innerHTML = `<p class="empty quick-slots-empty">Could not load available times right now.</p>`;
+    }
+  }
+
+  loadQuickSlots();
+
   getPatientSession()
     .then((data) => {
       if (!data.authenticated || !data.user) {
