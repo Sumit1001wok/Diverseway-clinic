@@ -715,6 +715,11 @@ if (bookingButton || bookingWhatsAppButton) {
       return;
     }
 
+    if (!(await isPatientSignedIn())) {
+      window.location.href = `account.html?returnTo=${encodeURIComponent("booking.html")}`;
+      return;
+    }
+
     serviceInput.value = service;
     updateServiceHelp();
     dateInput.value = date;
@@ -774,6 +779,20 @@ if (bookingButton || bookingWhatsAppButton) {
   }
 
   loadQuickSlots();
+
+  // Booking online requires a signed-in patient account (guests can still use
+  // the WhatsApp button). Fails closed: if the session check itself fails,
+  // treat it the same as "not signed in" rather than showing the form.
+  async function isPatientSignedIn() {
+    const session = await getPatientSession().catch(() => ({ authenticated: false }));
+    return Boolean(session.authenticated && session.user);
+  }
+
+  isPatientSignedIn().then((signedIn) => {
+    document.getElementById("bk-login-checking")?.classList.add("hidden");
+    document.getElementById("bk-login-gate")?.classList.toggle("hidden", signedIn);
+    document.getElementById("bk-form-wrap")?.classList.toggle("hidden", !signedIn);
+  });
 
   getPatientSession()
     .then((data) => {

@@ -21,6 +21,17 @@
   // STATUS_LABELS, TIER_LABELS, escapeHtml, formatDate, statusBadge, and
   // apiFetch come from js/dashboard-utils.js, loaded before this file.
 
+  // Only ever redirect to a same-site relative path — a bare filename or a
+  // path starting with a single "/" — never an absolute/protocol-relative
+  // URL, so ?returnTo= can't be used as an open redirect to another site.
+  function safeReturnTo() {
+    const value = new URLSearchParams(window.location.search).get("returnTo");
+    if (!value || value.includes("://") || value.startsWith("//")) {
+      return null;
+    }
+    return value;
+  }
+
   tabs?.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-tab]");
     if (!btn) return;
@@ -81,6 +92,12 @@
   }
 
   function showDashboard(user) {
+    const returnTo = safeReturnTo();
+    if (returnTo) {
+      window.location.href = returnTo;
+      return;
+    }
+
     loginScreen.classList.add("hidden");
     dashboard.classList.remove("hidden");
     if (accountNameEl) {

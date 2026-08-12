@@ -21,6 +21,7 @@ const {
 } = require("../db");
 const { notifyNewBooking, notifyNewContact, notifyScreeningCallback } = require("../whatsapp");
 const { buildPaymentForm, decodeAndVerifyCallback, checkTransactionStatus } = require("../esewa");
+const { requirePatient } = require("../middleware/auth");
 const { asyncHandler } = require("../asyncHandler");
 
 function siteUrl(req) {
@@ -118,6 +119,7 @@ router.get(
 
 router.post(
   "/booking",
+  requirePatient,
   asyncHandler(async (req, res) => {
     const name = trim(req.body.name);
     const phone = trim(req.body.phone);
@@ -162,7 +164,7 @@ router.post(
         preferred_time,
         message,
         source: "website",
-        patient_id: req.session?.patient?.id || null,
+        patient_id: req.session.patient.id,
       });
 
       // Booking is only finalized once the advance payment succeeds — the

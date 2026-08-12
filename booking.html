@@ -95,6 +95,20 @@
           <h2 class="section-title">Booking Details</h2>
           <p class="muted">Submit your request online, or send the same details via WhatsApp.</p>
 
+          <p id="bk-login-checking" class="muted">Checking your account…</p>
+
+          <div id="bk-login-gate" class="login-gate hidden">
+            <p>Please sign in or create a free account to book online — it only takes a minute, and lets you see your booking history anytime.</p>
+            <div class="login-gate-actions">
+              <a class="btn-primary btn-primary-large" href="account.html?returnTo=booking.html">Sign In / Create Account</a>
+              <a class="btn-whatsapp btn-whatsapp-large" href="https://wa.me/9779845366417?text=Hello%2C%20I%20would%20like%20to%20book%20an%20appointment" aria-label="Book an appointment on WhatsApp instead">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.78 14.78L2 22l5.36-1.2A10 10 0 1 0 12 2Zm0 18.5a8.48 8.48 0 0 1-4.33-1.18l-.3-.18l-3.18.7l.7-3.1l-.2-.32A8.5 8.5 0 1 1 12 20.5Zm4.83-6.34c-.26-.13-1.55-.76-1.8-.84c-.24-.09-.42-.13-.6.13c-.18.26-.68.84-.84 1.02c-.15.18-.3.2-.56.07c-.26-.13-1.1-.4-2.1-1.28c-.78-.7-1.3-1.55-1.45-1.8c-.15-.25-.02-.38.11-.5c.12-.12.26-.3.39-.45c.13-.15.18-.25.27-.42c.09-.18.04-.33-.02-.46c-.07-.13-.6-1.44-.82-1.97c-.22-.53-.45-.46-.6-.47h-.52c-.17 0-.46.06-.7.33c-.24.26-.92.9-.92 2.2c0 1.3.94 2.55 1.07 2.73c.13.18 1.84 2.8 4.45 3.93c.62.27 1.1.43 1.48.55c.62.2 1.18.17 1.62.1c.5-.08 1.55-.64 1.77-1.25c.22-.62.22-1.14.15-1.26c-.06-.12-.24-.2-.5-.33Z"/></svg>
+                Book via WhatsApp Instead
+              </a>
+            </div>
+          </div>
+
+          <div id="bk-form-wrap" class="hidden">
           <div class="field-grid">
             <label class="field">
               <span>Parent / Guardian Name <span class="req">*</span></span>
@@ -172,6 +186,7 @@
             </button>
             <p id="bk-success" class="form-success" role="status" aria-live="polite" hidden></p>
             <p id="bk-error" class="form-error" role="status" aria-live="polite"></p>
+          </div>
           </div>
         </div>
 
