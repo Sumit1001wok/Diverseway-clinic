@@ -128,7 +128,7 @@ const TEAM_MEMBERS = [
     title: "Behaviour Therapist & Psychological Counsellor",
     bio: "Behaviour support, emotional regulation, and confidential counselling for wellbeing and resilience.",
     bio_short: "Behaviour support, emotional regulation, and confidential counselling.",
-    photo_url: "assets/images/ai/team-b.png",
+    photo_url: "assets/images/team-shrijana-subedi.jpg",
     whatsapp_message: "Hi, I'd like to book with Shrijana Subedi",
     sort_order: 4,
   },
