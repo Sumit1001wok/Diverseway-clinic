@@ -4,3 +4,4 @@ data/*.json
 data/*.db
 data/*.db-*
 .DS_Store
+dump.rdb
