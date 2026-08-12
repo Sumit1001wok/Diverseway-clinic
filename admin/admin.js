@@ -26,6 +26,7 @@ const modalNotes = document.getElementById("modal-notes");
 const modalQuickActions = document.getElementById("modal-quick-actions");
 const modalDeleteBtn = document.getElementById("modal-delete");
 const modalError = document.getElementById("modal-error");
+const availabilityService = document.getElementById("availability-service");
 const availabilityDate = document.getElementById("availability-date");
 const availabilityTime = document.getElementById("availability-time");
 const availabilitySlots = document.getElementById("availability-slots");
@@ -257,8 +258,10 @@ function renderAvailabilitySlots(rows) {
     return;
   }
 
+  const serviceLabel = availabilityService?.value || "this therapy";
+
   if (rows.length === 0) {
-    availabilitySlots.innerHTML = `<p class="empty slot-empty">No times set for this date yet. Add clinic hours or individual times above.</p>`;
+    availabilitySlots.innerHTML = `<p class="empty slot-empty">No times set for ${escapeHtml(serviceLabel)} on this date yet. Add clinic hours or individual times above.</p>`;
     return;
   }
 
@@ -277,11 +280,11 @@ function renderAvailabilitySlots(rows) {
       } else if (slot.is_available) {
         stateClass = "is-open";
         stateLabel = "Available";
-        meta = "Patients can book this time online";
+        meta = `Open for ${slot.service || serviceLabel} bookings`;
       }
 
       const actions = slot.is_booked
-        ? `<span class="slot-meta">${escapeHtml(meta)}</span>`
+        ? ""
         : `
           <button type="button" class="btn-outline btn-sm" data-slot-toggle="${slot.id}" data-open="${slot.is_available ? "1" : "0"}">
             ${slot.is_available ? "Close slot" : "Open slot"}
@@ -337,14 +340,14 @@ function renderAvailabilitySlots(rows) {
 }
 
 async function loadAvailability() {
-  if (!availabilityDate) {
+  if (!availabilityDate || !availabilityService) {
     return;
   }
 
   availabilityError.textContent = "";
 
   const result = await apiFetch(
-    `/api/admin/availability?date=${encodeURIComponent(availabilityDate.value)}`
+    `/api/admin/availability?date=${encodeURIComponent(availabilityDate.value)}&service=${encodeURIComponent(availabilityService.value)}`
   );
 
   availabilityRows = result.data;
@@ -851,6 +854,14 @@ availabilityDate?.addEventListener("change", async () => {
   }
 });
 
+availabilityService?.addEventListener("change", async () => {
+  try {
+    await loadAvailability();
+  } catch (err) {
+    availabilityError.textContent = err.message;
+  }
+});
+
 refreshAvailabilityBtn?.addEventListener("click", async () => {
   try {
     await loadAvailability();
@@ -871,6 +882,7 @@ addAvailabilitySlotBtn?.addEventListener("click", async () => {
       body: JSON.stringify({
         date: availabilityDate.value,
         time: availabilityTime.value,
+        service: availabilityService.value,
       }),
     });
     availabilityTime.value = "";
@@ -890,7 +902,7 @@ addStandardHoursBtn?.addEventListener("click", async () => {
   try {
     await apiFetch("/api/admin/availability/standard", {
       method: "POST",
-      body: JSON.stringify({ date: availabilityDate.value }),
+      body: JSON.stringify({ date: availabilityDate.value, service: availabilityService.value }),
     });
     availabilityError.textContent = "";
     await loadAvailability();

@@ -58,6 +58,35 @@ async function queryOne(text, params) {
   return rows[0] || null;
 }
 
+// Adds the `service` column to an availability_slots table that predates it
+// (the live database already had this table before per-service slots were
+// introduced), and swaps the old (slot_date, slot_time) unique constraint for
+// one that includes service, so the same time can be opened independently
+// for different therapies. Idempotent — safe to run on every cold start.
+async function migrateAvailabilityServiceColumn() {
+  await query(`ALTER TABLE availability_slots ADD COLUMN IF NOT EXISTS service TEXT NOT NULL DEFAULT ''`);
+
+  const oldConstraint = await queryOne(`
+    SELECT constraint_name FROM information_schema.table_constraints
+    WHERE table_name = 'availability_slots' AND constraint_type = 'UNIQUE'
+      AND constraint_name = 'availability_slots_slot_date_slot_time_key'
+  `);
+  if (oldConstraint) {
+    await query(`ALTER TABLE availability_slots DROP CONSTRAINT availability_slots_slot_date_slot_time_key`);
+  }
+
+  const newConstraint = await queryOne(`
+    SELECT constraint_name FROM information_schema.table_constraints
+    WHERE table_name = 'availability_slots' AND constraint_type = 'UNIQUE'
+      AND constraint_name = 'availability_slots_slot_date_slot_time_service_key'
+  `);
+  if (!newConstraint) {
+    await query(
+      `ALTER TABLE availability_slots ADD CONSTRAINT availability_slots_slot_date_slot_time_service_key UNIQUE (slot_date, slot_time, service)`
+    );
+  }
+}
+
 async function initSchema() {
   await query(`
     CREATE TABLE IF NOT EXISTS patients (
@@ -109,10 +138,11 @@ async function initSchema() {
       id SERIAL PRIMARY KEY,
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,
+      service TEXT NOT NULL DEFAULT '',
       is_available INTEGER NOT NULL DEFAULT 1,
       booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
-      UNIQUE(slot_date, slot_time)
+      UNIQUE(slot_date, slot_time, service)
     );
 
     CREATE TABLE IF NOT EXISTS services (
@@ -207,6 +237,8 @@ async function initSchema() {
     );
   `);
 
+  await migrateAvailabilityServiceColumn();
+
   await query(`
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
@@ -214,6 +246,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_bookings_patient ON bookings(patient_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_availability_date ON availability_slots(slot_date);
+    CREATE INDEX IF NOT EXISTS idx_availability_date_service ON availability_slots(slot_date, service);
     CREATE INDEX IF NOT EXISTS idx_services_sort ON services(sort_order);
     CREATE INDEX IF NOT EXISTS idx_team_sort ON team_members(sort_order);
     CREATE INDEX IF NOT EXISTS idx_testimonials_sort ON testimonials(sort_order);
@@ -487,7 +520,7 @@ function buildStandardSlotTimes() {
 
 const STANDARD_SLOT_TIMES = buildStandardSlotTimes();
 
-async function listAvailabilitySlots(date, { includeUnavailable = false } = {}) {
+async function listAvailabilitySlots(date, service, { includeUnavailable = false } = {}) {
   await ensureReady();
   let sql = `
     SELECT
@@ -499,7 +532,7 @@ async function listAvailabilitySlots(date, { includeUnavailable = false } = {}) 
       b.duration_minutes AS booking_duration_minutes
     FROM availability_slots s
     LEFT JOIN bookings b ON b.id = s.booking_id
-    WHERE s.slot_date = $1
+    WHERE s.slot_date = $1 AND s.service = $2
   `;
 
   if (!includeUnavailable) {
@@ -508,23 +541,24 @@ async function listAvailabilitySlots(date, { includeUnavailable = false } = {}) 
 
   sql += " ORDER BY s.slot_time ASC";
 
-  return queryAll(sql, [date]);
+  return queryAll(sql, [date, service]);
 }
 
-function listAvailabilityForDate(date, options = {}) {
-  return listAvailabilitySlots(date, options);
+function listAvailabilityForDate(date, service, options = {}) {
+  return listAvailabilitySlots(date, service, options);
 }
 
-async function getActiveBookingsForDate(date) {
+async function getActiveBookingsForDate(date, service) {
   return queryAll(
     `
       SELECT id, preferred_time, duration_minutes, service, status
       FROM bookings
       WHERE preferred_date = $1
+        AND service = $2
         AND preferred_time IS NOT NULL
         AND status IN ('pending', 'confirmed')
     `,
-    [date]
+    [date, service]
   );
 }
 
@@ -545,9 +579,9 @@ function bookingsOverlap(startMinutes, durationMinutes, bookings, excludeBooking
   });
 }
 
-async function isSlotWindowOpen(date, startMinutes, durationMinutes) {
+async function isSlotWindowOpen(date, startMinutes, durationMinutes, service) {
   for (let minute = startMinutes; minute < startMinutes + durationMinutes; minute += SLOT_INTERVAL_MINUTES) {
-    const slot = await getAvailabilitySlot(date, minutesToTime(minute));
+    const slot = await getAvailabilitySlot(date, minutesToTime(minute), service);
 
     if (!slot || !slot.is_available || slot.booking_id) {
       return false;
@@ -557,7 +591,7 @@ async function isSlotWindowOpen(date, startMinutes, durationMinutes) {
   return true;
 }
 
-async function isStartTimeAvailable(date, startTime, durationMinutes, excludeBookingId = null) {
+async function isStartTimeAvailable(date, startTime, durationMinutes, service, excludeBookingId = null) {
   const startMinutes = timeToMinutes(startTime);
   if (startMinutes === null) {
     return false;
@@ -571,13 +605,17 @@ async function isStartTimeAvailable(date, startTime, durationMinutes, excludeBoo
     return false;
   }
 
-  const bookings = await getActiveBookingsForDate(date);
+  // Overlap is only checked against other bookings of the SAME service — a
+  // different therapy at the same time is assumed to be a different
+  // therapist, so it doesn't block this one. The admin controls this in
+  // practice by choosing which services to open at which times.
+  const bookings = await getActiveBookingsForDate(date, service);
 
   if (bookingsOverlap(startMinutes, durationMinutes, bookings, excludeBookingId)) {
     return false;
   }
 
-  return isSlotWindowOpen(date, startMinutes, durationMinutes);
+  return isSlotWindowOpen(date, startMinutes, durationMinutes, service);
 }
 
 async function listAvailableStartTimes(date, service) {
@@ -592,7 +630,7 @@ async function listAvailableStartTimes(date, service) {
   ) {
     const time = minutesToTime(startMinutes);
 
-    if (await isStartTimeAvailable(date, time, durationMinutes)) {
+    if (await isStartTimeAvailable(date, time, durationMinutes, service)) {
       starts.push({
         time,
         label: formatTimeRangeLabel(time, durationMinutes),
@@ -604,41 +642,45 @@ async function listAvailableStartTimes(date, service) {
   return starts;
 }
 
-async function getAvailabilitySlot(date, time) {
+async function getAvailabilitySlot(date, time, service) {
   const slotTime = normalizeTime(time);
   if (!date || !slotTime) {
     return null;
   }
 
-  return queryOne("SELECT * FROM availability_slots WHERE slot_date = $1 AND slot_time = $2", [date, slotTime]);
+  return queryOne("SELECT * FROM availability_slots WHERE slot_date = $1 AND slot_time = $2 AND service = $3", [
+    date,
+    slotTime,
+    service,
+  ]);
 }
 
-async function addAvailabilitySlot(date, time) {
+async function addAvailabilitySlot(date, time, service) {
   await ensureReady();
   const slotTime = normalizeTime(time);
-  if (!date || !slotTime) {
+  if (!date || !slotTime || !service) {
     return null;
   }
 
-  const existing = await getAvailabilitySlot(date, slotTime);
+  const existing = await getAvailabilitySlot(date, slotTime, service);
   if (existing) {
     return existing;
   }
 
   const row = await queryOne(
-    `INSERT INTO availability_slots (slot_date, slot_time, is_available, created_at)
-     VALUES ($1, $2, 1, $3) RETURNING *`,
-    [date, slotTime, nowIso()]
+    `INSERT INTO availability_slots (slot_date, slot_time, service, is_available, created_at)
+     VALUES ($1, $2, $3, 1, $4) RETURNING *`,
+    [date, slotTime, service, nowIso()]
   );
 
   return row;
 }
 
-async function addStandardAvailability(date) {
+async function addStandardAvailability(date, service) {
   const created = [];
 
   for (const time of STANDARD_SLOT_TIMES) {
-    const slot = await addAvailabilitySlot(date, time);
+    const slot = await addAvailabilitySlot(date, time, service);
     if (slot) {
       created.push(slot);
     }
@@ -676,13 +718,13 @@ async function deleteAvailabilitySlot(id) {
   return result.rowCount > 0;
 }
 
-async function reserveAvailabilitySlot(date, time, bookingId, durationMinutes) {
+async function reserveAvailabilitySlot(date, time, bookingId, durationMinutes, service) {
   const startMinutes = timeToMinutes(time);
   if (startMinutes === null) {
     return false;
   }
 
-  if (!(await isStartTimeAvailable(date, time, durationMinutes, bookingId))) {
+  if (!(await isStartTimeAvailable(date, time, durationMinutes, service, bookingId))) {
     return false;
   }
 
@@ -690,8 +732,8 @@ async function reserveAvailabilitySlot(date, time, bookingId, durationMinutes) {
     const result = await query(
       `UPDATE availability_slots
        SET is_available = 0, booking_id = $1
-       WHERE slot_date = $2 AND slot_time = $3 AND is_available = 1 AND booking_id IS NULL`,
-      [bookingId, date, minutesToTime(minute)]
+       WHERE slot_date = $2 AND slot_time = $3 AND service = $4 AND is_available = 1 AND booking_id IS NULL`,
+      [bookingId, date, minutesToTime(minute), service]
     );
     if (result.rowCount === 0) {
       await releaseAvailabilityForBooking(bookingId);
@@ -713,7 +755,7 @@ async function releaseAvailabilityForBooking(bookingId) {
 
 async function isSlotBookable(date, time, service) {
   const durationMinutes = getServiceDuration(service);
-  return isStartTimeAvailable(date, time, durationMinutes);
+  return isStartTimeAvailable(date, time, durationMinutes, service);
 }
 
 async function createBooking(payload) {
@@ -785,7 +827,13 @@ async function createBooking(payload) {
   }
 
   if (preferredDate && preferredTime) {
-    const reserved = await reserveAvailabilitySlot(preferredDate, preferredTime, booking.id, durationMinutes);
+    const reserved = await reserveAvailabilitySlot(
+      preferredDate,
+      preferredTime,
+      booking.id,
+      durationMinutes,
+      payload.service
+    );
 
     if (!reserved) {
       await query("DELETE FROM bookings WHERE id = $1", [booking.id]);

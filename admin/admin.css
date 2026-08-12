@@ -167,10 +167,15 @@
   margin-bottom: 1rem;
 }
 
+.availability-service-field,
 .availability-date-field,
 .availability-time-field {
   margin: 0;
   min-width: 160px;
+}
+
+.availability-service-field {
+  min-width: 220px;
 }
 
 .availability-actions {

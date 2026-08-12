@@ -148,16 +148,22 @@ router.get(
   "/availability",
   asyncHandler(async (req, res) => {
     const date = String(req.query.date || "").trim();
+    const service = String(req.query.service || "").trim();
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: "A valid date is required (YYYY-MM-DD)." });
     }
 
-    const rawSlots = await listAvailabilityForDate(date, { includeUnavailable: true });
+    if (!service) {
+      return res.status(400).json({ error: "A service is required." });
+    }
+
+    const rawSlots = await listAvailabilityForDate(date, service, { includeUnavailable: true });
     const slots = rawSlots.map((slot) => ({
       id: slot.id,
       date: slot.slot_date,
       time: slot.slot_time,
+      service: slot.service,
       label: formatTimeLabel(slot.slot_time),
       is_available: Boolean(slot.is_available && !slot.booking_id),
       is_booked: Boolean(slot.booking_id),
@@ -173,7 +179,7 @@ router.get(
           : null,
     }));
 
-    res.json({ date, data: slots });
+    res.json({ date, service, data: slots });
   })
 );
 
@@ -181,6 +187,7 @@ router.post(
   "/availability",
   asyncHandler(async (req, res) => {
     const date = String(req.body.date || "").trim();
+    const service = String(req.body.service || "").trim();
     const time = normalizeTime(req.body.time);
     const times = Array.isArray(req.body.times)
       ? req.body.times.map((value) => normalizeTime(value)).filter(Boolean)
@@ -192,11 +199,15 @@ router.post(
       return res.status(400).json({ error: "A valid date is required (YYYY-MM-DD)." });
     }
 
+    if (!service) {
+      return res.status(400).json({ error: "A service is required." });
+    }
+
     if (times.length === 0) {
       return res.status(400).json({ error: "At least one valid time is required." });
     }
 
-    const createdRaw = await Promise.all(times.map((slotTime) => addAvailabilitySlot(date, slotTime)));
+    const createdRaw = await Promise.all(times.map((slotTime) => addAvailabilitySlot(date, slotTime, service)));
     const created = createdRaw.filter(Boolean);
 
     res.status(201).json({
@@ -205,6 +216,7 @@ router.post(
         id: slot.id,
         date: slot.slot_date,
         time: slot.slot_time,
+        service: slot.service,
         label: formatTimeLabel(slot.slot_time),
         is_available: Boolean(slot.is_available && !slot.booking_id),
       })),
@@ -216,13 +228,18 @@ router.post(
   "/availability/standard",
   asyncHandler(async (req, res) => {
     const date = String(req.body.date || "").trim();
+    const service = String(req.body.service || "").trim();
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: "A valid date is required (YYYY-MM-DD)." });
     }
 
-    const created = await addStandardAvailability(date);
-    const rawSlots = await listAvailabilityForDate(date, { includeUnavailable: true });
+    if (!service) {
+      return res.status(400).json({ error: "A service is required." });
+    }
+
+    const created = await addStandardAvailability(date, service);
+    const rawSlots = await listAvailabilityForDate(date, service, { includeUnavailable: true });
 
     res.status(201).json({
       ok: true,
@@ -230,6 +247,7 @@ router.post(
       data: rawSlots.map((slot) => ({
         id: slot.id,
         time: slot.slot_time,
+        service: slot.service,
         label: formatTimeLabel(slot.slot_time),
         is_available: Boolean(slot.is_available && !slot.booking_id),
         is_booked: Boolean(slot.booking_id),

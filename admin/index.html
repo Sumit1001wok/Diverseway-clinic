@@ -78,9 +78,22 @@
             <h2 class="section-title admin-section-title">Available appointment times</h2>
             <button id="refresh-availability" class="btn-outline btn-sm" type="button">Refresh</button>
           </div>
-          <p class="muted panel-intro">Set open times in 15-minute blocks from 7 AM to 8 PM. Speech therapy uses 30 min slots; occupational and behaviour therapy use 45 min.</p>
+          <p class="muted panel-intro">Set open times in 15-minute blocks from 7 AM to 8 PM, per therapy — each service has its own set of open times, so the same clock time can be open for one therapy and closed for another.</p>
 
           <div class="availability-toolbar">
+            <label class="field availability-service-field">
+              <span>Therapy</span>
+              <select id="availability-service">
+                <option value="Consultation">Consultation (15 min)</option>
+                <option value="Speech Therapy">Speech Therapy (30 min)</option>
+                <option value="Occupational Therapy">Occupational Therapy (45 min)</option>
+                <option value="Behaviour Therapy">Behaviour Therapy (45 min)</option>
+                <option value="Psychological Counselling">Psychological Counselling (45 min)</option>
+                <option value="Voice Therapy">Voice Therapy (30 min)</option>
+                <option value="Special Education Support">Special Education Support (45 min)</option>
+                <option value="Other">Other (45 min)</option>
+              </select>
+            </label>
             <label class="field availability-date-field">
               <span>Date</span>
               <input id="availability-date" type="date">
