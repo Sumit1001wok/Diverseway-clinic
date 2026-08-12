@@ -3,7 +3,7 @@
 const { listServices, listSettings } = require("./db");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 const MAX_OUTPUT_TOKENS = 500;
 // Bounds input token growth (and thus rate-limit usage on the free tier) per
 // request — a support chat doesn't need the full history, just enough for
