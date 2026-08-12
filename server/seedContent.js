@@ -132,6 +132,15 @@ const TEAM_MEMBERS = [
     whatsapp_message: "Hi, I'd like to book with Shrijana Subedi",
     sort_order: 4,
   },
+  {
+    name: "Sumit Karna",
+    title: "Computer Engineer & CEO",
+    bio: "Leads Diverse Way Clinic's operations and technology, focused on making quality therapy more accessible for families.",
+    bio_short: "Leading operations and technology at Diverse Way Clinic.",
+    photo_url: "assets/images/team-sumit-karna.jpg",
+    whatsapp_message: "Hi, I'd like to connect with Sumit Karna",
+    sort_order: 5,
+  },
 ];
 
 const TESTIMONIALS = [
