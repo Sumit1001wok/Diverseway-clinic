@@ -15,8 +15,27 @@ if (!connectionString) {
 // Neon/Vercel Postgres require TLS; a local dev/test database on localhost does not.
 const isLocalDb = /localhost|127\.0\.0\.1/.test(connectionString);
 
+// Supabase/Vercel-provisioned connection strings include `sslmode=require`,
+// which pg's connection-string parser turns into its own ssl setting that can
+// take precedence over the explicit `ssl` option below — causing "self-signed
+// certificate in certificate chain" even with rejectUnauthorized: false set.
+// Stripping it from the string forces our explicit ssl config to be the only
+// source of truth.
+function stripSslModeParam(str) {
+  try {
+    const url = new URL(str);
+    url.searchParams.delete("sslmode");
+    url.searchParams.delete("sslcert");
+    url.searchParams.delete("sslkey");
+    url.searchParams.delete("sslrootcert");
+    return url.toString();
+  } catch {
+    return str;
+  }
+}
+
 const pool = new Pool({
-  connectionString,
+  connectionString: isLocalDb ? connectionString : stripSslModeParam(connectionString),
   ssl: isLocalDb ? false : { rejectUnauthorized: false },
   // Serverless best practice: keep each function instance's own pool small and
   // rely on the upstream PgBouncer-style pooler (Neon/Vercel Postgres provide
