@@ -154,13 +154,22 @@ main {
 
 .site-header.is-scrolled {
   background-color: transparent;
-  /* Fully transparent (no color fill) still needs SOME blur, or page
-     content scrolling underneath the sticky header visually collides
-     with the nav text and makes it unreadable. */
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: none;
   border-bottom-color: transparent;
+}
+
+/* No blur once scrolled, so page content shows sharp behind the header —
+   give the nav text/logo their own contrast (a soft white halo) instead,
+   since they can no longer rely on a frosted backdrop for legibility. */
+.site-header.is-scrolled .brand-name,
+.site-header.is-scrolled .nav-link {
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 1px 14px rgba(255, 255, 255, 0.7);
+}
+
+.site-header.is-scrolled .brand-logo-img {
+  filter: drop-shadow(0 1px 4px rgba(255, 255, 255, 0.85));
 }
 
 .navbar {
