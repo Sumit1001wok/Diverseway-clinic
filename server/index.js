@@ -19,6 +19,7 @@ const { asyncHandler } = require("./asyncHandler");
 const apiRoutes = require("./routes/api");
 const adminRoutes = require("./routes/admin");
 const authRoutes = require("./routes/auth");
+const chatRoutes = require("./routes/chat");
 const { productionMiddleware } = require("./middleware/production");
 
 const app = express();
@@ -114,6 +115,7 @@ app.get("/", (_req, res) => {
 // own, more generous authedApiLimiter instead of no limit at all.
 app.use("/api/admin", authedApiLimiter, adminRoutes);
 app.use("/api/auth", authedApiLimiter, authRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api", formLimiter, apiRoutes);
 
 app.get(
