@@ -93,6 +93,20 @@ const SERVICES = [
     whatsapp_message: "Hi, I would like to book Special Education Support",
     sort_order: 6,
   },
+  {
+    slug: "consultation",
+    name: "Consultation",
+    short_description: "A quick 15-minute consultation to discuss your needs and next steps.",
+    description:
+      "A focused 15-minute session to talk through your concerns, answer your questions, and help you choose the right service and therapist to get started.",
+    icon_path: "M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20Zm1 10.41V6h-2v7l5.25 3.15l1-1.64L13 12.41Z",
+    detail_icon_path: "M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20Zm1 10.41V6h-2v7l5.25 3.15l1-1.64L13 12.41Z",
+    photo_url: "assets/images/ai/reception.png",
+    accent_class: "accent-speech",
+    treat_list: ["Initial assessment discussion", "Service and therapist recommendations", "Questions about therapy options"],
+    whatsapp_message: "Hi, I would like to book a Consultation",
+    sort_order: 0,
+  },
 ];
 
 const TEAM_MEMBERS = [

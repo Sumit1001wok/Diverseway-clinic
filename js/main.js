@@ -525,6 +525,7 @@ if (bookingButton || bookingWhatsAppButton) {
   }
 
   const BOOKING_DURATIONS = {
+    Consultation: 15,
     "Speech Therapy": 30,
     "Occupational Therapy": 45,
     "Behaviour Therapy": 45,
