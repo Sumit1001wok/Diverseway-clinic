@@ -2914,6 +2914,15 @@ main {
   justify-content: flex-start;
 }
 
+.screening-multiselect-hint {
+  margin-top: -1rem;
+  margin-bottom: 1rem;
+}
+
+.screening-single-question .screening-form-actions {
+  margin-top: 1.5rem;
+}
+
 .screening-result-badge {
   display: inline-flex;
   align-items: center;

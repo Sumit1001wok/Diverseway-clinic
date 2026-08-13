@@ -103,10 +103,21 @@ const CONCERN_OPTIONS = {
 function concernQuestion(categoryId, label) {
   return {
     id: "concern",
-    label: label || "What's your main concern?",
-    type: "select",
+    label: label || "What are your concerns?",
+    type: "multiselect",
     options: CONCERN_OPTIONS[categoryId],
   };
+}
+
+// A concern answer can be either the old single-value string (submissions
+// made before this became a checklist) or the current array of values.
+// Either way, "has a concern" means something other than "no_concern" was picked.
+function hasConcern(answers) {
+  const concern = answers.concern;
+  if (Array.isArray(concern)) {
+    return concern.some((v) => v !== "no_concern");
+  }
+  return Boolean(concern) && concern !== "no_concern";
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +174,7 @@ const LANGUAGE_DELAY_MILESTONES = {
 function languageDelayQuestions(ageBandId) {
   const milestones = LANGUAGE_DELAY_MILESTONES[ageBandId];
   return [
-    concernQuestion("language-delay", "What's your main concern about your child's speech or language?"),
+    concernQuestion("language-delay", "What are your concerns about your child's speech or language?"),
     { id: "birthTerm", label: "Was your child born premature (before 37 weeks)?", type: "yesno", options: YESNO },
     { id: "medicalCondition", label: "Any diagnosed medical condition (e.g. ADHD, ASD, genetic condition)?", type: "yesno", options: YESNO },
     {
@@ -206,7 +217,7 @@ function languageDelayQuestions(ageBandId) {
 function evaluateLanguageDelay(answers, ageBandId) {
   const milestoneIds = LANGUAGE_DELAY_MILESTONES[ageBandId].map((m) => m.id);
   const notYetCount = milestoneIds.filter((id) => answers[id] === "no").length;
-  const concern = answers.concern && answers.concern !== "no_concern";
+  const concern = hasConcern(answers);
   const respondsToName = answers.respondsToName === "yes";
   const regression = answers.lostSkills === "yes";
   const hearingFailed = answers.hearingTest === "failed";
@@ -249,7 +260,7 @@ const ARTICULATION_PART3 = [
 
 function articulationQuestions() {
   return [
-    concernQuestion("articulation", "What's your main concern about your child's speech?"),
+    concernQuestion("articulation", "What are your concerns about your child's speech?"),
     { id: "hearingLoss", label: "Any diagnosed hearing loss?", type: "yesno", options: YESNO },
     { id: "structuralDifference", label: "Any structural difference in mouth, lips, or palate (cleft palate, tongue tie)?", type: "yesno", options: YESNO },
     { id: "associatedCondition", label: "Any associated genetic or neurological condition (e.g. Down syndrome, ADHD, ASD)?", type: "yesno", options: YESNO },
@@ -297,7 +308,7 @@ const VOICE_PART3 = [
 
 function voiceQuestions() {
   return [
-    concernQuestion("voice", "What's your main concern about your voice?"),
+    concernQuestion("voice", "What are your concerns about your voice?"),
     { id: "suddenChange", label: "Did your voice change suddenly in the last 2 weeks?", type: "yesno", options: YESNO },
     { id: "painLumpSwallow", label: "Do you feel pain, a lump, or difficulty swallowing?", type: "yesno", options: YESNO },
     { id: "recentInjury", label: "Any recent stroke, injury, or throat surgery?", type: "yesno", options: YESNO },
@@ -357,7 +368,7 @@ const FLUENCY_PART3 = [
 
 function fluencyQuestions() {
   return [
-    concernQuestion("fluency", "What's your main concern about your speech fluency?"),
+    concernQuestion("fluency", "What are your concerns about your speech fluency?"),
     {
       id: "onset",
       label: "When did you first notice a problem with your speech fluency?",
@@ -430,7 +441,7 @@ const APRAXIA_UNDER3_PART3 = [
 
 function apraxiaQuestions(ageBandId, answers) {
   const questions = [
-    concernQuestion("apraxia", "What's your main concern about your child's speech?"),
+    concernQuestion("apraxia", "What are your concerns about your child's speech?"),
     { id: "neuroCondition", label: "Any diagnosed neurological condition?", type: "yesno", options: YESNO },
     { id: "strokeHistory", label: "Any history of stroke or brain injury?", type: "yesno", options: YESNO },
     ...APRAXIA_PART3.map((q) => ({ id: q.id, label: q.label, type: "ysn", options: YSN })),
@@ -481,7 +492,7 @@ const DYSARTHRIA_PART3 = [
 
 function dysarthriaQuestions() {
   return [
-    concernQuestion("dysarthria", "What's your main concern about the speech difficulty?"),
+    concernQuestion("dysarthria", "What are your concerns about the speech difficulty?"),
     { id: "strokeHistory", label: "Any recent stroke or brain injury?", type: "yesno", options: YESNO },
     { id: "suddenOnset", label: "Did the speech difficulty start suddenly?", type: "yesno", options: YESNO },
     { id: "breathingSwallowing", label: "Any difficulty breathing or swallowing along with the speech change?", type: "yesno", options: YESNO },
@@ -535,7 +546,7 @@ const APHASIA_PART4 = [
 
 function aphasiaQuestions() {
   return [
-    concernQuestion("aphasia", "What's your main concern?"),
+    concernQuestion("aphasia", "What are your concerns?"),
     { id: "strokeHistory", label: "Any history of stroke or traumatic brain injury?", type: "yesno", options: YESNO },
     { id: "progressiveDisease", label: "Any progressive neurological disease (e.g. dementia)?", type: "yesno", options: YESNO },
     { id: "brainTumor", label: "Any brain tumor or brain surgery?", type: "yesno", options: YESNO },
@@ -588,7 +599,7 @@ const RESONANCE_PART3 = [
 
 function resonanceQuestions() {
   return [
-    concernQuestion("resonance", "What's your main concern?"),
+    concernQuestion("resonance", "What are your concerns?"),
     { id: "cleftHistory", label: "Any history of cleft palate or cleft lip?", type: "yesno", options: YESNO },
     { id: "neuroGeneticCondition", label: "Any diagnosed neurological or genetic condition?", type: "yesno", options: YESNO },
     { id: "recentSurgery", label: "Any recent surgery on the mouth, nose, or throat?", type: "yesno", options: YESNO },

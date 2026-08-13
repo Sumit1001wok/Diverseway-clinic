@@ -184,6 +184,12 @@
     }
 
     const q = questions[state.questionIndex];
+
+    if (q.type === "multiselect") {
+      renderMultiselectQuestion(q, questions.length);
+      return;
+    }
+
     const value = state.answers[q.id];
 
     container.innerHTML = `
@@ -228,6 +234,70 @@
           goToQuestion(state.questionIndex + 1);
         }, 320);
       });
+    });
+  }
+
+  // Concerns can overlap (e.g. a child both "doesn't make sentences" and
+  // "doesn't respond to name"), so this question type lets several options
+  // stay selected at once instead of auto-advancing on the first tap.
+  function renderMultiselectQuestion(q, totalQuestions) {
+    const noneValue = "no_concern";
+    const selected = Array.isArray(state.answers[q.id]) ? state.answers[q.id] : [];
+
+    container.innerHTML = `
+      ${stepperHtml()}
+      <div class="screening-step" data-step="questions">
+        <button type="button" class="screening-back" data-back>← Back</button>
+        ${progressBarHtml(state.questionIndex, totalQuestions)}
+        <fieldset class="screening-single-question" data-question="${q.id}">
+          <legend class="screening-question-heading">${escapeHtml(q.label)}</legend>
+          <p class="muted screening-multiselect-hint">Select all that apply.</p>
+          <div class="screening-options screening-options-large">
+            ${q.options
+              .map(
+                (opt) => `
+              <button type="button" class="screening-option-btn${selected.includes(opt.value) ? " is-active" : ""}" data-value="${opt.value}">${escapeHtml(opt.label)}</button>`
+              )
+              .join("")}
+          </div>
+          <div class="screening-form-actions">
+            <button type="button" class="btn-primary btn-primary-large" data-continue${selected.length ? "" : " disabled"}>Continue</button>
+          </div>
+        </fieldset>
+      </div>
+    `;
+
+    container.querySelector("[data-back]").addEventListener("click", () => {
+      if (state.questionIndex === 0) {
+        state.step = state.category.ageBands ? "ageBand" : "category";
+      } else {
+        state.questionIndex -= 1;
+      }
+      render();
+    });
+
+    container.querySelectorAll(".screening-option-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const val = btn.dataset.value;
+        let current = Array.isArray(state.answers[q.id]) ? [...state.answers[q.id]] : [];
+
+        if (val === noneValue) {
+          current = current.includes(noneValue) ? [] : [noneValue];
+        } else {
+          current = current.filter((v) => v !== noneValue);
+          current = current.includes(val) ? current.filter((v) => v !== val) : [...current, val];
+        }
+
+        state.answers[q.id] = current;
+        render();
+      });
+    });
+
+    container.querySelector("[data-continue]").addEventListener("click", () => {
+      if (!(state.answers[q.id] || []).length) {
+        return;
+      }
+      goToQuestion(state.questionIndex + 1);
     });
   }
 
