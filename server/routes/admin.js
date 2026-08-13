@@ -49,6 +49,8 @@ const {
   deleteTherapist,
   listAttendance,
   updateAttendance,
+  listAssessmentsAdmin,
+  getAssessmentAdmin,
 } = require("../db");
 const { requireAdmin, hasValidSession, verifyAdminLogin } = require("../middleware/auth");
 const { asyncHandler } = require("../asyncHandler");
@@ -570,6 +572,24 @@ router.patch(
       }
       throw err;
     }
+  })
+);
+
+router.get(
+  "/assessments",
+  asyncHandler(async (_req, res) => {
+    res.json({ data: await listAssessmentsAdmin() });
+  })
+);
+
+router.get(
+  "/assessments/:id",
+  asyncHandler(async (req, res) => {
+    const record = await getAssessmentAdmin(Number(req.params.id));
+    if (!record) {
+      return res.status(404).json({ error: "Assessment not found." });
+    }
+    res.json({ data: record });
   })
 );
 

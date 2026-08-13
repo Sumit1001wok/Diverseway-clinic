@@ -59,6 +59,7 @@
             <a href="#bookings-panel">Bookings</a>
             <a href="#therapists-panel">Therapists</a>
             <a href="#attendance-panel">Attendance</a>
+            <a href="#assessments-admin-panel">Assessments</a>
             <a href="#messages-panel">Messages</a>
             <a href="#screenings-panel">Screenings</a>
             <a href="#services-panel">Services</a>
@@ -217,6 +218,22 @@
                 <tr><th>Therapist</th><th>Date</th><th>Check-in</th><th>Check-out</th><th>Actions</th></tr>
               </thead>
               <tbody id="attendance-admin-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="assessments-admin-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Speech-language assessments</h2>
+            <button id="refresh-assessments-admin" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+          <p class="muted panel-intro">Read-only — written and edited from each therapist's own dashboard.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Client</th><th>Therapist</th><th>Date</th><th>Last updated</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="assessments-admin-body"></tbody>
             </table>
           </div>
         </section>

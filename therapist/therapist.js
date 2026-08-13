@@ -16,12 +16,23 @@ const attendanceCheckInBtn = document.getElementById("attendance-check-in");
 const attendanceCheckOutBtn = document.getElementById("attendance-check-out");
 const attendanceError = document.getElementById("attendance-error");
 const attendanceBody = document.getElementById("attendance-body");
+const assessmentsListView = document.getElementById("assessments-list-view");
+const assessmentsFormView = document.getElementById("assessments-form-view");
+const assessmentsBody = document.getElementById("assessments-body");
+const newAssessmentBtn = document.getElementById("new-assessment-btn");
+const assessmentFormTitle = document.getElementById("assessment-form-title");
+const assessmentFormCancelBtn = document.getElementById("assessment-form-cancel");
+const assessmentForm = document.getElementById("assessment-form");
+const assessmentFormFields = document.getElementById("assessment-form-fields");
+const assessmentFormError = document.getElementById("assessment-form-error");
 
 // STATUS_LABELS, escapeHtml, formatDate, statusBadge, and apiFetch come from
 // ../js/dashboard-utils.js, loaded before this file.
 
 let allBookings = [];
 let allAttendance = [];
+let allAssessments = [];
+let editingAssessmentId = null;
 
 function formatTimeOnly(value) {
   if (!value) return null;
@@ -194,6 +205,150 @@ async function loadBookings() {
   renderBookings();
 }
 
+// ASSESSMENT_SECTIONS comes from ../js/assessment-data.js, loaded before this
+// file — the single source of truth for both this form and the print view,
+// so field ids double as the JSON keys the server stores/returns.
+function renderAssessmentFormFields(values) {
+  const sections = window.ASSESSMENT_SECTIONS || [];
+  assessmentFormFields.innerHTML = sections
+    .map((section) => {
+      const heading = section.title ? `<h3 class="assessment-section-title">${escapeHtml(section.title)}</h3>` : "";
+      const fieldsHtml = section.fields
+        .map((f) => {
+          const value = values[f.id] || "";
+          const labelHtml = f.hideLabel ? "" : `<span>${escapeHtml(f.label)}${f.required ? " *" : ""}</span>`;
+          const fieldClass = f.type === "textarea" ? "field field-full" : "field";
+          let inputHtml;
+          if (f.type === "textarea") {
+            const placeholder = f.hideLabel ? escapeHtml(f.label) : "";
+            inputHtml = `<textarea id="af-${f.id}" name="${f.id}" rows="3" placeholder="${placeholder}">${escapeHtml(value)}</textarea>`;
+          } else if (f.type === "date") {
+            inputHtml = `<input id="af-${f.id}" name="${f.id}" type="date" value="${escapeHtml(value)}">`;
+          } else {
+            inputHtml = `<input id="af-${f.id}" name="${f.id}" type="text" value="${escapeHtml(value)}"${f.required ? " required" : ""}>`;
+          }
+          return `<label class="${fieldClass}">${labelHtml}${inputHtml}</label>`;
+        })
+        .join("");
+      return `${heading}<div class="form-grid field-grid assessment-section-grid">${fieldsHtml}</div>`;
+    })
+    .join("");
+}
+
+function collectAssessmentFormValues() {
+  const values = {};
+  (window.ASSESSMENT_SECTIONS || []).forEach((section) => {
+    section.fields.forEach((f) => {
+      const el = document.getElementById(`af-${f.id}`);
+      if (el) {
+        values[f.id] = el.value.trim();
+      }
+    });
+  });
+  return values;
+}
+
+function showAssessmentForm(assessment) {
+  editingAssessmentId = assessment ? assessment.id : null;
+  assessmentFormTitle.textContent = assessment ? `Edit assessment — ${assessment.client_name}` : "New assessment";
+  assessmentFormError.textContent = "";
+  renderAssessmentFormFields(assessment || {});
+  assessmentsListView.classList.add("hidden");
+  assessmentsFormView.classList.remove("hidden");
+}
+
+function showAssessmentList() {
+  assessmentsFormView.classList.add("hidden");
+  assessmentsListView.classList.remove("hidden");
+}
+
+function renderAssessmentsList() {
+  if (!allAssessments.length) {
+    assessmentsBody.innerHTML = '<tr><td colspan="4" class="empty">No assessments yet.</td></tr>';
+    return;
+  }
+
+  assessmentsBody.innerHTML = allAssessments
+    .map(
+      (a) => `
+    <tr>
+      <td>${escapeHtml(a.client_name)}</td>
+      <td>${escapeHtml(a.assessment_date || "—")}</td>
+      <td>${formatDate(a.updated_at || a.created_at)}</td>
+      <td class="therapist-row-actions">
+        <button type="button" class="btn-outline btn-sm" data-edit-assessment="${a.id}">Edit</button>
+        <button type="button" class="btn-outline btn-sm" data-print-assessment="${a.id}">Print</button>
+        <button type="button" class="btn-danger btn-sm" data-delete-assessment="${a.id}">Delete</button>
+      </td>
+    </tr>`
+    )
+    .join("");
+
+  document.querySelectorAll("[data-edit-assessment]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const a = allAssessments.find((x) => x.id === Number(btn.dataset.editAssessment));
+      if (a) {
+        showAssessmentForm(a);
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-print-assessment]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.open(`assessment-print.html?id=${btn.dataset.printAssessment}&role=therapist`, "_blank");
+    });
+  });
+
+  document.querySelectorAll("[data-delete-assessment]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!window.confirm("Delete this assessment? This cannot be undone.")) {
+        return;
+      }
+      try {
+        await apiFetch(`/api/therapist/assessments/${btn.dataset.deleteAssessment}`, { method: "DELETE" });
+        await loadAssessments();
+      } catch (err) {
+        window.alert(err.message || "Could not delete assessment.");
+      }
+    });
+  });
+}
+
+async function loadAssessments() {
+  const res = await apiFetch("/api/therapist/assessments");
+  allAssessments = res.data;
+  renderAssessmentsList();
+}
+
+newAssessmentBtn?.addEventListener("click", () => showAssessmentForm(null));
+assessmentFormCancelBtn?.addEventListener("click", showAssessmentList);
+
+assessmentForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  assessmentFormError.textContent = "";
+
+  const values = collectAssessmentFormValues();
+  if (!values.client_name) {
+    assessmentFormError.textContent = "Client name is required.";
+    return;
+  }
+
+  try {
+    if (editingAssessmentId) {
+      await apiFetch(`/api/therapist/assessments/${editingAssessmentId}`, {
+        method: "PATCH",
+        body: JSON.stringify(values),
+      });
+    } else {
+      await apiFetch("/api/therapist/assessments", { method: "POST", body: JSON.stringify(values) });
+    }
+    await loadAssessments();
+    showAssessmentList();
+  } catch (err) {
+    assessmentFormError.textContent = err.message || "Could not save assessment.";
+  }
+});
+
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   loginError.textContent = "";
@@ -207,7 +362,7 @@ loginForm.addEventListener("submit", async (e) => {
       }),
     });
 
-    await Promise.all([loadBookings(), loadAttendance()]);
+    await Promise.all([loadBookings(), loadAttendance(), loadAssessments()]);
     showDashboard(result.user);
   } catch (err) {
     loginError.textContent = err.message || "Invalid email or password.";
@@ -231,7 +386,7 @@ async function bootstrap() {
   try {
     const session = await apiFetch("/api/therapist/session");
     if (session.authenticated) {
-      await Promise.all([loadBookings(), loadAttendance()]);
+      await Promise.all([loadBookings(), loadAttendance(), loadAssessments()]);
       showDashboard(session.user);
       return;
     }

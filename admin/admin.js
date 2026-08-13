@@ -66,6 +66,8 @@ const attendanceModalDate = document.getElementById("attendance-modal-date");
 const attendanceModalCheckin = document.getElementById("attendance-modal-checkin");
 const attendanceModalCheckout = document.getElementById("attendance-modal-checkout");
 const attendanceModalError = document.getElementById("attendance-modal-error");
+const assessmentsAdminBody = document.getElementById("assessments-admin-body");
+const refreshAssessmentsAdminBtn = document.getElementById("refresh-assessments-admin");
 
 const WHATSAPP_PHONE = "9779845366417";
 // STATUS_LABELS, TIER_LABELS, escapeHtml, formatDate, statusBadge, and
@@ -83,6 +85,7 @@ let activeContentId = null;
 let allScreenings = [];
 let allTherapists = [];
 let allAttendance = [];
+let allAssessmentsAdmin = [];
 let activeAttendanceId = null;
 let activeScreeningId = null;
 
@@ -411,7 +414,14 @@ async function loadDashboard() {
   renderBookingTable();
   renderMessages(allMessages);
   await loadAvailability();
-  await Promise.all([loadAllContent(), loadSettings(), loadScreenings(), loadTherapists(), loadAttendanceAdmin()]);
+  await Promise.all([
+    loadAllContent(),
+    loadSettings(),
+    loadScreenings(),
+    loadTherapists(),
+    loadAttendanceAdmin(),
+    loadAssessmentsAdmin(),
+  ]);
 }
 
 function renderScreenings() {
@@ -658,6 +668,40 @@ attendanceModal?.querySelectorAll("[data-close-attendance-modal]").forEach((el) 
 });
 
 refreshAttendanceBtn?.addEventListener("click", loadAttendanceAdmin);
+
+function renderAssessmentsAdmin() {
+  if (!allAssessmentsAdmin.length) {
+    assessmentsAdminBody.innerHTML = '<tr><td colspan="5" class="empty">No assessments written yet.</td></tr>';
+    return;
+  }
+
+  assessmentsAdminBody.innerHTML = allAssessmentsAdmin
+    .map(
+      (a) => `
+    <tr>
+      <td>${escapeHtml(a.client_name)}</td>
+      <td>${escapeHtml(a.therapist_name)}<br><span class="muted">${escapeHtml(a.therapist_service)}</span></td>
+      <td>${escapeHtml(a.assessment_date || "—")}</td>
+      <td>${formatDate(a.updated_at || a.created_at)}</td>
+      <td><button type="button" class="btn-outline btn-sm" data-print-assessment-admin="${a.id}">Print</button></td>
+    </tr>`
+    )
+    .join("");
+
+  document.querySelectorAll("[data-print-assessment-admin]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.open(`../therapist/assessment-print.html?id=${btn.dataset.printAssessmentAdmin}&role=admin`, "_blank");
+    });
+  });
+}
+
+async function loadAssessmentsAdmin() {
+  const res = await apiFetch("/api/admin/assessments");
+  allAssessmentsAdmin = res.data;
+  renderAssessmentsAdmin();
+}
+
+refreshAssessmentsAdminBtn?.addEventListener("click", loadAssessmentsAdmin);
 
 function openScreeningModal(id) {
   const row = allScreenings.find((r) => r.id === id);

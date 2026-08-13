@@ -268,6 +268,16 @@ async function initSchema() {
       UNIQUE(therapist_id, date)
     );
 
+    CREATE TABLE IF NOT EXISTS assessments (
+      id SERIAL PRIMARY KEY,
+      therapist_id INTEGER NOT NULL REFERENCES therapists(id) ON DELETE CASCADE,
+      client_name TEXT NOT NULL,
+      assessment_date TEXT,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS screening_submissions (
       id SERIAL PRIMARY KEY,
       category TEXT NOT NULL,
@@ -307,6 +317,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_therapists_email ON therapists(email);
     CREATE INDEX IF NOT EXISTS idx_therapists_service ON therapists(service);
     CREATE INDEX IF NOT EXISTS idx_attendance_therapist_date ON attendance(therapist_id, date);
+    CREATE INDEX IF NOT EXISTS idx_assessments_therapist ON assessments(therapist_id);
   `);
 }
 
@@ -1857,6 +1868,113 @@ async function updateAttendance(id, payload) {
   );
 }
 
+function withAssessment(row) {
+  if (!row) {
+    return null;
+  }
+  const { data, ...rest } = row;
+  return { ...rest, ...parseJsonField(data, {}) };
+}
+
+// Everything except client_name/assessment_date (which stay as real columns
+// for list sorting/search) is stored as a JSON blob — same approach
+// screening_submissions.answers already uses, rather than a 30+ column table.
+function splitAssessmentPayload(payload) {
+  const { client_name, assessment_date, ...rest } = payload;
+  return { client_name, assessment_date: assessment_date || null, data: JSON.stringify(rest) };
+}
+
+async function createAssessment(therapistId, payload) {
+  await ensureReady();
+  const { client_name, assessment_date, data } = splitAssessmentPayload(payload);
+  const now = nowIso();
+
+  const row = await queryOne(
+    `INSERT INTO assessments (therapist_id, client_name, assessment_date, data, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $5)
+     RETURNING *`,
+    [therapistId, client_name, assessment_date, data, now]
+  );
+
+  return withAssessment(row);
+}
+
+async function listAssessmentsForTherapist(therapistId) {
+  await ensureReady();
+  const rows = await queryAll(
+    "SELECT * FROM assessments WHERE therapist_id = $1 ORDER BY created_at DESC, id DESC",
+    [therapistId]
+  );
+  return rows.map(withAssessment);
+}
+
+async function getAssessmentForTherapist(id, therapistId) {
+  await ensureReady();
+  const row = await queryOne("SELECT * FROM assessments WHERE id = $1 AND therapist_id = $2", [id, therapistId]);
+  return withAssessment(row);
+}
+
+async function updateAssessment(id, therapistId, payload) {
+  await ensureReady();
+  const existing = await queryOne("SELECT * FROM assessments WHERE id = $1 AND therapist_id = $2", [
+    id,
+    therapistId,
+  ]);
+  if (!existing) {
+    return null;
+  }
+
+  // Partial-update safe: a field only overwrites the existing value if the
+  // caller actually included it in payload, matching updateBooking/
+  // updateTherapist's convention — otherwise an edit that omits a field
+  // (e.g. client_name wasn't resent) would null it out instead of leaving it.
+  const existingParsed = parseJsonField(existing.data, {});
+  const client_name =
+    payload.client_name !== undefined ? String(payload.client_name).trim() || existing.client_name : existing.client_name;
+  const assessment_date =
+    payload.assessment_date !== undefined ? payload.assessment_date || null : existing.assessment_date;
+  const { client_name: _cn, assessment_date: _ad, ...restPayload } = payload;
+  const mergedData = JSON.stringify({ ...existingParsed, ...restPayload });
+
+  const row = await queryOne(
+    `UPDATE assessments SET client_name = $1, assessment_date = $2, data = $3, updated_at = $4
+     WHERE id = $5
+     RETURNING *`,
+    [client_name, assessment_date, mergedData, nowIso(), id]
+  );
+
+  return withAssessment(row);
+}
+
+async function deleteAssessment(id, therapistId) {
+  await ensureReady();
+  const result = await query("DELETE FROM assessments WHERE id = $1 AND therapist_id = $2", [id, therapistId]);
+  return result.rowCount > 0;
+}
+
+async function listAssessmentsAdmin() {
+  await ensureReady();
+  const rows = await queryAll(
+    `SELECT assessments.*, therapists.name AS therapist_name, therapists.service AS therapist_service
+     FROM assessments
+     JOIN therapists ON therapists.id = assessments.therapist_id
+     ORDER BY assessments.created_at DESC, assessments.id DESC`
+  );
+  return rows.map(withAssessment);
+}
+
+async function getAssessmentAdmin(id) {
+  await ensureReady();
+  const row = await queryOne(
+    `SELECT assessments.*, therapists.name AS therapist_name, therapists.service AS therapist_service
+     FROM assessments
+     JOIN therapists ON therapists.id = assessments.therapist_id
+     WHERE assessments.id = $1`,
+    [id]
+  );
+  return withAssessment(row);
+}
+
 async function listBookingsForPatient(patientId) {
   await ensureReady();
   return queryAll("SELECT * FROM bookings WHERE patient_id = $1 ORDER BY created_at DESC, id DESC", [patientId]);
@@ -1947,4 +2065,11 @@ module.exports = {
   listAttendanceForTherapist,
   listAttendance,
   updateAttendance,
+  createAssessment,
+  listAssessmentsForTherapist,
+  getAssessmentForTherapist,
+  updateAssessment,
+  deleteAssessment,
+  listAssessmentsAdmin,
+  getAssessmentAdmin,
 };

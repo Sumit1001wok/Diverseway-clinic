@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Speech Language Assessment | Diverse Way Clinic</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1a1a2e;
+      --muted: #6b7280;
+      --rule: #d8dce3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2.5rem 3rem 4rem;
+      font-family: "DM Sans", sans-serif;
+      color: var(--ink);
+      max-width: 840px;
+      margin-inline: auto;
+    }
+    .print-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1.5rem;
+    }
+    .print-btn {
+      border: 1px solid #ccc;
+      background: #fff;
+      padding: 0.55rem 1.1rem;
+      border-radius: 999px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .letterhead {
+      text-align: center;
+      margin-bottom: 1.75rem;
+    }
+    .letterhead img {
+      height: 64px;
+      display: block;
+      margin: 0 auto 0.5rem;
+    }
+    .letterhead .clinic-address {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+    .letterhead h1 {
+      font-family: "Playfair Display", serif;
+      font-size: 1.5rem;
+      margin: 0.5rem 0 0;
+    }
+    .header-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem 2rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--rule);
+    }
+    .header-item {
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .header-item strong {
+      font-weight: 700;
+    }
+    .a-section {
+      margin-bottom: 1.1rem;
+    }
+    .a-section h2 {
+      font-size: 1rem;
+      margin: 0 0 0.3rem;
+    }
+    .a-section .field-line {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+    }
+    .a-section .field-line .label {
+      font-weight: 700;
+    }
+    .a-section .body-text {
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin: 0.2rem 0 0;
+    }
+    .empty-note {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .loading, .error-state {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--muted);
+    }
+    @media print {
+      .print-toolbar { display: none; }
+      body { padding: 0.5in; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" class="print-btn" id="print-btn">Print / Save as PDF</button>
+  </div>
+  <div id="content">
+    <p class="loading">Loading assessment…</p>
+  </div>
+
+  <script src="../js/dashboard-utils.js"></script>
+  <script src="../js/assessment-data.js"></script>
+  <script>
+    "use strict";
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const role = params.get("role") === "admin" ? "admin" : "therapist";
+    const contentEl = document.getElementById("content");
+
+    document.getElementById("print-btn").addEventListener("click", () => window.print());
+
+    function renderAssessment(a) {
+      const sections = window.ASSESSMENT_SECTIONS || [];
+      const header = sections.find((s) => s.id === "header");
+      const rest = sections.filter((s) => s.id !== "header");
+
+      const headerHtml = header.fields
+        .map((f) => `<div class="header-item"><strong>${escapeHtml(f.label)}:</strong> ${escapeHtml(a[f.id] || "—")}</div>`)
+        .join("");
+
+      const sectionsHtml = rest
+        .map((section) => {
+          const fieldsHtml = section.fields
+            .map((f) => {
+              const value = (a[f.id] || "").trim();
+              if (f.hideLabel) {
+                return value
+                  ? `<p class="body-text">${escapeHtml(value)}</p>`
+                  : `<p class="empty-note">—</p>`;
+              }
+              return `<p class="field-line"><span class="label">${escapeHtml(f.label)}:</span> ${escapeHtml(value || "—")}</p>`;
+            })
+            .join("");
+          return `<div class="a-section"><h2>${escapeHtml(section.title)}</h2>${fieldsHtml}</div>`;
+        })
+        .join("");
+
+      contentEl.innerHTML = `
+        <div class="letterhead">
+          <img src="../assets/images/logo.png" alt="Diverse Way Clinic">
+          <p class="clinic-address">Shankhamul- Townplanning, Lalitpur</p>
+          <h1>Speech Language Assessment</h1>
+        </div>
+        <div class="header-grid">${headerHtml}</div>
+        ${sectionsHtml}
+      `;
+      document.title = `${a.client_name} — Speech Language Assessment`;
+    }
+
+    async function load() {
+      if (!id) {
+        contentEl.innerHTML = '<p class="error-state">No assessment specified.</p>';
+        return;
+      }
+      try {
+        const res = await apiFetch(`/api/${role}/assessments/${id}`);
+        renderAssessment(res.data);
+      } catch (err) {
+        contentEl.innerHTML = `<p class="error-state">${escapeHtml(err.message || "Could not load this assessment.")}</p>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
