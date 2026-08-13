@@ -11,11 +11,98 @@ const therapistServiceLabelEl = document.getElementById("therapist-service-label
 const logoutBtn = document.getElementById("logout-btn");
 const bookingsBody = document.getElementById("bookings-body");
 const refreshBookingsBtn = document.getElementById("refresh-bookings");
+const attendanceTodayStatus = document.getElementById("attendance-today-status");
+const attendanceCheckInBtn = document.getElementById("attendance-check-in");
+const attendanceCheckOutBtn = document.getElementById("attendance-check-out");
+const attendanceError = document.getElementById("attendance-error");
+const attendanceBody = document.getElementById("attendance-body");
 
 // STATUS_LABELS, escapeHtml, formatDate, statusBadge, and apiFetch come from
 // ../js/dashboard-utils.js, loaded before this file.
 
 let allBookings = [];
+let allAttendance = [];
+
+function formatTimeOnly(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function todayIsoDate() {
+  // Matches the server's Nepal-local "today" closely enough for choosing which
+  // row of allAttendance is "today's" row for button state — the server is
+  // still the source of truth for what date a check-in/out actually lands on.
+  return new Date().toISOString().slice(0, 10);
+}
+
+function renderAttendance() {
+  const today = todayIsoDate();
+  const todayRow = allAttendance.find((row) => row.date === today);
+
+  if (!todayRow) {
+    attendanceTodayStatus.textContent = "You haven't checked in today.";
+    attendanceCheckInBtn.classList.remove("hidden");
+    attendanceCheckOutBtn.classList.add("hidden");
+  } else if (todayRow.check_in_time && !todayRow.check_out_time) {
+    attendanceTodayStatus.textContent = `Checked in today at ${formatTimeOnly(todayRow.check_in_time)}.`;
+    attendanceCheckInBtn.classList.add("hidden");
+    attendanceCheckOutBtn.classList.remove("hidden");
+  } else if (todayRow.check_in_time && todayRow.check_out_time) {
+    attendanceTodayStatus.textContent = `Checked in at ${formatTimeOnly(todayRow.check_in_time)} · checked out at ${formatTimeOnly(todayRow.check_out_time)}.`;
+    attendanceCheckInBtn.classList.add("hidden");
+    attendanceCheckOutBtn.classList.add("hidden");
+  }
+
+  if (!allAttendance.length) {
+    attendanceBody.innerHTML = '<tr><td colspan="3" class="empty">No attendance recorded yet.</td></tr>';
+    return;
+  }
+
+  attendanceBody.innerHTML = allAttendance
+    .map(
+      (row) => `
+    <tr>
+      <td>${escapeHtml(row.date)}</td>
+      <td>${row.check_in_time ? escapeHtml(formatTimeOnly(row.check_in_time)) : "—"}</td>
+      <td>${row.check_out_time ? escapeHtml(formatTimeOnly(row.check_out_time)) : "—"}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function loadAttendance() {
+  const res = await apiFetch("/api/therapist/attendance");
+  allAttendance = res.data;
+  renderAttendance();
+}
+
+attendanceCheckInBtn.addEventListener("click", async () => {
+  attendanceError.textContent = "";
+  attendanceCheckInBtn.disabled = true;
+  try {
+    await apiFetch("/api/therapist/attendance/check-in", { method: "POST" });
+    await loadAttendance();
+  } catch (err) {
+    attendanceError.textContent = err.message || "Could not check in.";
+  } finally {
+    attendanceCheckInBtn.disabled = false;
+  }
+});
+
+attendanceCheckOutBtn.addEventListener("click", async () => {
+  attendanceError.textContent = "";
+  attendanceCheckOutBtn.disabled = true;
+  try {
+    await apiFetch("/api/therapist/attendance/check-out", { method: "POST" });
+    await loadAttendance();
+  } catch (err) {
+    attendanceError.textContent = err.message || "Could not check out.";
+  } finally {
+    attendanceCheckOutBtn.disabled = false;
+  }
+});
 
 function showDashboard(user) {
   if (therapistUserEl && user) {
@@ -120,7 +207,7 @@ loginForm.addEventListener("submit", async (e) => {
       }),
     });
 
-    await loadBookings();
+    await Promise.all([loadBookings(), loadAttendance()]);
     showDashboard(result.user);
   } catch (err) {
     loginError.textContent = err.message || "Invalid email or password.";
@@ -144,7 +231,7 @@ async function bootstrap() {
   try {
     const session = await apiFetch("/api/therapist/session");
     if (session.authenticated) {
-      await loadBookings();
+      await Promise.all([loadBookings(), loadAttendance()]);
       showDashboard(session.user);
       return;
     }

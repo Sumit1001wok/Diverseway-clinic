@@ -2,7 +2,15 @@
 
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { verifyTherapistPassword, listBookings, getBookingById, updateBookingStatus } = require("../db");
+const {
+  verifyTherapistPassword,
+  listBookings,
+  getBookingById,
+  updateBookingStatus,
+  checkInTherapist,
+  checkOutTherapist,
+  listAttendanceForTherapist,
+} = require("../db");
 const { requireTherapist, hasValidTherapistSession } = require("../middleware/auth");
 const { asyncHandler } = require("../asyncHandler");
 
@@ -97,6 +105,46 @@ router.patch(
 
     const updated = await updateBookingStatus(id, status);
     res.json({ data: updated });
+  })
+);
+
+router.get(
+  "/attendance",
+  requireTherapist,
+  asyncHandler(async (req, res) => {
+    res.json({ data: await listAttendanceForTherapist(req.session.therapist.id) });
+  })
+);
+
+router.post(
+  "/attendance/check-in",
+  requireTherapist,
+  asyncHandler(async (req, res) => {
+    try {
+      const record = await checkInTherapist(req.session.therapist.id);
+      res.json({ ok: true, data: record });
+    } catch (err) {
+      if (err.code === "ALREADY_CHECKED_IN") {
+        return res.status(409).json({ error: err.message });
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  "/attendance/check-out",
+  requireTherapist,
+  asyncHandler(async (req, res) => {
+    try {
+      const record = await checkOutTherapist(req.session.therapist.id);
+      res.json({ ok: true, data: record });
+    } catch (err) {
+      if (err.code === "NOT_CHECKED_IN" || err.code === "ALREADY_CHECKED_OUT") {
+        return res.status(409).json({ error: err.message });
+      }
+      throw err;
+    }
   })
 );
 

@@ -47,6 +47,8 @@ const {
   getTherapistByEmail,
   updateTherapist,
   deleteTherapist,
+  listAttendance,
+  updateAttendance,
 } = require("../db");
 const { requireAdmin, hasValidSession, verifyAdminLogin } = require("../middleware/auth");
 const { asyncHandler } = require("../asyncHandler");
@@ -538,6 +540,36 @@ router.delete(
       return res.status(404).json({ error: "Therapist not found." });
     }
     res.json({ ok: true, id });
+  })
+);
+
+router.get(
+  "/attendance",
+  asyncHandler(async (_req, res) => {
+    res.json({ data: await listAttendance() });
+  })
+);
+
+router.patch(
+  "/attendance/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+      const record = await updateAttendance(id, {
+        date: req.body.date,
+        check_in_time: req.body.check_in_time,
+        check_out_time: req.body.check_out_time,
+      });
+      if (!record) {
+        return res.status(404).json({ error: "Attendance record not found." });
+      }
+      res.json({ ok: true, data: record });
+    } catch (err) {
+      if (err.code === "DUPLICATE_DATE") {
+        return res.status(409).json({ error: err.message });
+      }
+      throw err;
+    }
   })
 );
 

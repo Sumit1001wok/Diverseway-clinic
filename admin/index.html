@@ -58,6 +58,7 @@
             <a href="#availability-panel">Availability</a>
             <a href="#bookings-panel">Bookings</a>
             <a href="#therapists-panel">Therapists</a>
+            <a href="#attendance-panel">Attendance</a>
             <a href="#messages-panel">Messages</a>
             <a href="#screenings-panel">Screenings</a>
             <a href="#services-panel">Services</a>
@@ -200,6 +201,22 @@
                 <tr><th>Name</th><th>Email</th><th>Therapy</th><th>Active</th><th>Actions</th></tr>
               </thead>
               <tbody id="therapists-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="attendance-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Therapist attendance</h2>
+            <button id="refresh-attendance" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+          <p class="muted panel-intro">Check-in/check-out log from each therapist's dashboard. Edit an entry to correct a mistake.</p>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Therapist</th><th>Date</th><th>Check-in</th><th>Check-out</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="attendance-admin-body"></tbody>
             </table>
           </div>
         </section>
@@ -427,6 +444,41 @@
             <button type="button" class="btn-danger btn-sm" id="screening-modal-delete">Delete</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="attendance-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-attendance-modal></div>
+    <div class="modal-card booking-card" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
+      <div class="modal-head">
+        <div>
+          <p class="modal-ref hero-eyebrow" id="attendance-modal-eyebrow"></p>
+          <h2 class="section-title admin-section-title" id="attendance-modal-title">Edit attendance</h2>
+        </div>
+        <button type="button" class="modal-close" data-close-attendance-modal aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <form id="attendance-manage-form" class="manage-form">
+          <div class="form-grid field-grid">
+            <label class="field">
+              <span>Date</span>
+              <input id="attendance-modal-date" name="date" type="date" required>
+            </label>
+            <label class="field">
+              <span>Check-in time</span>
+              <input id="attendance-modal-checkin" name="check_in_time" type="time">
+            </label>
+            <label class="field">
+              <span>Check-out time</span>
+              <input id="attendance-modal-checkout" name="check_out_time" type="time">
+            </label>
+          </div>
+          <div class="save-actions">
+            <button class="btn-primary btn-sm" type="submit">Save</button>
+          </div>
+          <p id="attendance-modal-error" class="form-error" role="status"></p>
+        </form>
       </div>
     </div>
   </div>

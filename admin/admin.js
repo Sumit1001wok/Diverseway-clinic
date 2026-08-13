@@ -57,6 +57,15 @@ const therapistPasswordInput = document.getElementById("therapist-password");
 const therapistFormError = document.getElementById("therapist-form-error");
 const therapistsBody = document.getElementById("therapists-body");
 const refreshTherapistsBtn = document.getElementById("refresh-therapists");
+const attendanceAdminBody = document.getElementById("attendance-admin-body");
+const refreshAttendanceBtn = document.getElementById("refresh-attendance");
+const attendanceModal = document.getElementById("attendance-modal");
+const attendanceModalEyebrow = document.getElementById("attendance-modal-eyebrow");
+const attendanceManageForm = document.getElementById("attendance-manage-form");
+const attendanceModalDate = document.getElementById("attendance-modal-date");
+const attendanceModalCheckin = document.getElementById("attendance-modal-checkin");
+const attendanceModalCheckout = document.getElementById("attendance-modal-checkout");
+const attendanceModalError = document.getElementById("attendance-modal-error");
 
 const WHATSAPP_PHONE = "9779845366417";
 // STATUS_LABELS, TIER_LABELS, escapeHtml, formatDate, statusBadge, and
@@ -73,6 +82,8 @@ let activeContentEntity = null;
 let activeContentId = null;
 let allScreenings = [];
 let allTherapists = [];
+let allAttendance = [];
+let activeAttendanceId = null;
 let activeScreeningId = null;
 
 function formatShortDate(value) {
@@ -400,7 +411,7 @@ async function loadDashboard() {
   renderBookingTable();
   renderMessages(allMessages);
   await loadAvailability();
-  await Promise.all([loadAllContent(), loadSettings(), loadScreenings(), loadTherapists()]);
+  await Promise.all([loadAllContent(), loadSettings(), loadScreenings(), loadTherapists(), loadAttendanceAdmin()]);
 }
 
 function renderScreenings() {
@@ -539,6 +550,114 @@ therapistForm?.addEventListener("submit", async (e) => {
 });
 
 refreshTherapistsBtn?.addEventListener("click", loadTherapists);
+
+function timeOnly(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return escapeHtml(value);
+  return escapeHtml(d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+}
+
+function renderAttendanceAdmin() {
+  if (!allAttendance.length) {
+    attendanceAdminBody.innerHTML = '<tr><td colspan="5" class="empty">No attendance recorded yet.</td></tr>';
+    return;
+  }
+
+  attendanceAdminBody.innerHTML = allAttendance
+    .map(
+      (row) => `
+    <tr>
+      <td>${escapeHtml(row.therapist_name)}<br><span class="muted">${escapeHtml(row.therapist_service)}</span></td>
+      <td>${escapeHtml(row.date)}</td>
+      <td>${timeOnly(row.check_in_time)}</td>
+      <td>${timeOnly(row.check_out_time)}</td>
+      <td><button type="button" class="btn-outline btn-sm" data-edit-attendance="${row.id}">Edit</button></td>
+    </tr>`
+    )
+    .join("");
+
+  document.querySelectorAll("[data-edit-attendance]").forEach((btn) => {
+    btn.addEventListener("click", () => openAttendanceModal(Number(btn.dataset.editAttendance)));
+  });
+}
+
+async function loadAttendanceAdmin() {
+  const res = await apiFetch("/api/admin/attendance");
+  allAttendance = res.data;
+  renderAttendanceAdmin();
+}
+
+function toTimeInputValue(isoValue) {
+  if (!isoValue) return "";
+  const d = new Date(isoValue);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function openAttendanceModal(id) {
+  const row = allAttendance.find((r) => r.id === id);
+  if (!row) {
+    return;
+  }
+
+  activeAttendanceId = id;
+  attendanceModalEyebrow.textContent = `${row.therapist_name} · ${row.therapist_service}`;
+  attendanceModalDate.value = row.date;
+  attendanceModalCheckin.value = toTimeInputValue(row.check_in_time);
+  attendanceModalCheckout.value = toTimeInputValue(row.check_out_time);
+  attendanceModalError.textContent = "";
+
+  attendanceModal.classList.remove("hidden");
+  attendanceModal.setAttribute("aria-hidden", "false");
+}
+
+function closeAttendanceModal() {
+  attendanceModal.classList.add("hidden");
+  attendanceModal.setAttribute("aria-hidden", "true");
+  activeAttendanceId = null;
+}
+
+function combineDateAndTime(dateStr, timeStr) {
+  if (!timeStr) {
+    return null;
+  }
+  const d = new Date(`${dateStr}T${timeStr}:00`);
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  return d.toISOString();
+}
+
+attendanceManageForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!activeAttendanceId) {
+    return;
+  }
+  attendanceModalError.textContent = "";
+
+  const date = attendanceModalDate.value;
+  try {
+    await apiFetch(`/api/admin/attendance/${activeAttendanceId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        date,
+        check_in_time: combineDateAndTime(date, attendanceModalCheckin.value),
+        check_out_time: combineDateAndTime(date, attendanceModalCheckout.value),
+      }),
+    });
+    closeAttendanceModal();
+    await loadAttendanceAdmin();
+  } catch (err) {
+    attendanceModalError.textContent = err.message || "Could not save changes.";
+  }
+});
+
+attendanceModal?.querySelectorAll("[data-close-attendance-modal]").forEach((el) => {
+  el.addEventListener("click", closeAttendanceModal);
+});
+
+refreshAttendanceBtn?.addEventListener("click", loadAttendanceAdmin);
 
 function openScreeningModal(id) {
   const row = allScreenings.find((r) => r.id === id);
@@ -947,6 +1066,7 @@ function showLogin() {
   closeBookingModal();
   closeContentModal();
   closeScreeningModal();
+  closeAttendanceModal();
 }
 
 bookingFilters?.addEventListener("click", (event) => {
@@ -1104,6 +1224,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (!screeningModal.classList.contains("hidden")) {
     closeScreeningModal();
+  }
+  if (!attendanceModal.classList.contains("hidden")) {
+    closeAttendanceModal();
   }
 });
 

@@ -257,6 +257,17 @@ async function initSchema() {
       updated_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS attendance (
+      id SERIAL PRIMARY KEY,
+      therapist_id INTEGER NOT NULL REFERENCES therapists(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      check_in_time TEXT,
+      check_out_time TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      UNIQUE(therapist_id, date)
+    );
+
     CREATE TABLE IF NOT EXISTS screening_submissions (
       id SERIAL PRIMARY KEY,
       category TEXT NOT NULL,
@@ -295,6 +306,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_patients_email ON patients(email);
     CREATE INDEX IF NOT EXISTS idx_therapists_email ON therapists(email);
     CREATE INDEX IF NOT EXISTS idx_therapists_service ON therapists(service);
+    CREATE INDEX IF NOT EXISTS idx_attendance_therapist_date ON attendance(therapist_id, date);
   `);
 }
 
@@ -1731,6 +1743,120 @@ async function deleteTherapist(id) {
   return result.rowCount > 0;
 }
 
+// "Today" for attendance always comes from the server clock (Nepal-local),
+// never a client-supplied date — a therapist can only check in/out for the
+// current day, so a valid session can't be used to backdate attendance.
+function attendanceToday() {
+  return isoDateOnly(nepalNow());
+}
+
+async function checkInTherapist(therapistId) {
+  await ensureReady();
+  const date = attendanceToday();
+  const existing = await queryOne("SELECT * FROM attendance WHERE therapist_id = $1 AND date = $2", [
+    therapistId,
+    date,
+  ]);
+
+  if (existing && existing.check_in_time) {
+    const error = new Error("Already checked in today.");
+    error.code = "ALREADY_CHECKED_IN";
+    throw error;
+  }
+
+  const now = nowIso();
+  if (existing) {
+    return queryOne(
+      `UPDATE attendance SET check_in_time = $1, updated_at = $2 WHERE id = $3 RETURNING *`,
+      [now, now, existing.id]
+    );
+  }
+
+  return queryOne(
+    `INSERT INTO attendance (therapist_id, date, check_in_time, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $4)
+     RETURNING *`,
+    [therapistId, date, now, now]
+  );
+}
+
+async function checkOutTherapist(therapistId) {
+  await ensureReady();
+  const date = attendanceToday();
+  const existing = await queryOne("SELECT * FROM attendance WHERE therapist_id = $1 AND date = $2", [
+    therapistId,
+    date,
+  ]);
+
+  if (!existing || !existing.check_in_time) {
+    const error = new Error("You haven't checked in today yet.");
+    error.code = "NOT_CHECKED_IN";
+    throw error;
+  }
+  if (existing.check_out_time) {
+    const error = new Error("Already checked out today.");
+    error.code = "ALREADY_CHECKED_OUT";
+    throw error;
+  }
+
+  const now = nowIso();
+  return queryOne(`UPDATE attendance SET check_out_time = $1, updated_at = $2 WHERE id = $3 RETURNING *`, [
+    now,
+    now,
+    existing.id,
+  ]);
+}
+
+async function listAttendanceForTherapist(therapistId, { limit = 30 } = {}) {
+  await ensureReady();
+  return queryAll("SELECT * FROM attendance WHERE therapist_id = $1 ORDER BY date DESC LIMIT $2", [
+    therapistId,
+    limit,
+  ]);
+}
+
+async function listAttendance() {
+  await ensureReady();
+  return queryAll(
+    `SELECT attendance.*, therapists.name AS therapist_name, therapists.service AS therapist_service
+     FROM attendance
+     JOIN therapists ON therapists.id = attendance.therapist_id
+     ORDER BY attendance.date DESC, therapists.name ASC`
+  );
+}
+
+async function updateAttendance(id, payload) {
+  await ensureReady();
+  const existing = await queryOne("SELECT * FROM attendance WHERE id = $1", [id]);
+  if (!existing) {
+    return null;
+  }
+
+  const date = payload.date !== undefined ? String(payload.date).trim() || existing.date : existing.date;
+  const check_in_time = payload.check_in_time !== undefined ? payload.check_in_time || null : existing.check_in_time;
+  const check_out_time =
+    payload.check_out_time !== undefined ? payload.check_out_time || null : existing.check_out_time;
+
+  if (date !== existing.date) {
+    const conflict = await queryOne(
+      "SELECT id FROM attendance WHERE therapist_id = $1 AND date = $2 AND id != $3",
+      [existing.therapist_id, date, id]
+    );
+    if (conflict) {
+      const error = new Error("This therapist already has an attendance record for that date.");
+      error.code = "DUPLICATE_DATE";
+      throw error;
+    }
+  }
+
+  return queryOne(
+    `UPDATE attendance SET date = $1, check_in_time = $2, check_out_time = $3, updated_at = $4
+     WHERE id = $5
+     RETURNING *`,
+    [date, check_in_time, check_out_time, nowIso(), id]
+  );
+}
+
 async function listBookingsForPatient(patientId) {
   await ensureReady();
   return queryAll("SELECT * FROM bookings WHERE patient_id = $1 ORDER BY created_at DESC, id DESC", [patientId]);
@@ -1816,4 +1942,9 @@ module.exports = {
   listTherapists,
   updateTherapist,
   deleteTherapist,
+  checkInTherapist,
+  checkOutTherapist,
+  listAttendanceForTherapist,
+  listAttendance,
+  updateAttendance,
 };
