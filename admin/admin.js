@@ -683,7 +683,10 @@ function renderAssessmentsAdmin() {
       <td>${escapeHtml(a.therapist_name)}<br><span class="muted">${escapeHtml(a.therapist_service)}</span></td>
       <td>${escapeHtml(a.assessment_date || "—")}</td>
       <td>${formatDate(a.updated_at || a.created_at)}</td>
-      <td><button type="button" class="btn-outline btn-sm" data-print-assessment-admin="${a.id}">Print</button></td>
+      <td class="therapist-row-actions">
+        <button type="button" class="btn-outline btn-sm" data-print-assessment-admin="${a.id}">Print form</button>
+        ${a.report ? `<button type="button" class="btn-outline btn-sm" data-print-report-admin="${a.id}">View report</button>` : ""}
+      </td>
     </tr>`
     )
     .join("");
@@ -691,6 +694,12 @@ function renderAssessmentsAdmin() {
   document.querySelectorAll("[data-print-assessment-admin]").forEach((btn) => {
     btn.addEventListener("click", () => {
       window.open(`../therapist/assessment-print.html?id=${btn.dataset.printAssessmentAdmin}&role=admin`, "_blank");
+    });
+  });
+
+  document.querySelectorAll("[data-print-report-admin]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.open(`../therapist/report-print.html?id=${btn.dataset.printReportAdmin}&role=admin`, "_blank");
     });
   });
 }

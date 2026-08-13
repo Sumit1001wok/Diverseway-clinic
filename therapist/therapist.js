@@ -25,6 +25,16 @@ const assessmentFormCancelBtn = document.getElementById("assessment-form-cancel"
 const assessmentForm = document.getElementById("assessment-form");
 const assessmentFormFields = document.getElementById("assessment-form-fields");
 const assessmentFormError = document.getElementById("assessment-form-error");
+const assessmentsReportView = document.getElementById("assessments-report-view");
+const assessmentReportTitle = document.getElementById("assessment-report-title");
+const assessmentReportBackBtn = document.getElementById("assessment-report-back");
+const assessmentReportLoading = document.getElementById("assessment-report-loading");
+const assessmentReportFieldsEl = document.getElementById("assessment-report-fields");
+const assessmentReportActions = document.getElementById("assessment-report-actions");
+const assessmentReportRegenerateBtn = document.getElementById("assessment-report-regenerate");
+const assessmentReportSaveBtn = document.getElementById("assessment-report-save");
+const assessmentReportPrintBtn = document.getElementById("assessment-report-print");
+const assessmentReportError = document.getElementById("assessment-report-error");
 
 // STATUS_LABELS, escapeHtml, formatDate, statusBadge, and apiFetch come from
 // ../js/dashboard-utils.js, loaded before this file.
@@ -254,11 +264,13 @@ function showAssessmentForm(assessment) {
   assessmentFormError.textContent = "";
   renderAssessmentFormFields(assessment || {});
   assessmentsListView.classList.add("hidden");
+  assessmentsReportView.classList.add("hidden");
   assessmentsFormView.classList.remove("hidden");
 }
 
 function showAssessmentList() {
   assessmentsFormView.classList.add("hidden");
+  assessmentsReportView.classList.add("hidden");
   assessmentsListView.classList.remove("hidden");
 }
 
@@ -277,7 +289,8 @@ function renderAssessmentsList() {
       <td>${formatDate(a.updated_at || a.created_at)}</td>
       <td class="therapist-row-actions">
         <button type="button" class="btn-outline btn-sm" data-edit-assessment="${a.id}">Edit</button>
-        <button type="button" class="btn-outline btn-sm" data-print-assessment="${a.id}">Print</button>
+        <button type="button" class="btn-outline btn-sm" data-print-assessment="${a.id}">Print form</button>
+        <button type="button" class="btn-outline btn-sm" data-report-assessment="${a.id}">${a.report ? "View report" : "Generate report"}</button>
         <button type="button" class="btn-danger btn-sm" data-delete-assessment="${a.id}">Delete</button>
       </td>
     </tr>`
@@ -289,6 +302,15 @@ function renderAssessmentsList() {
       const a = allAssessments.find((x) => x.id === Number(btn.dataset.editAssessment));
       if (a) {
         showAssessmentForm(a);
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-report-assessment]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const a = allAssessments.find((x) => x.id === Number(btn.dataset.reportAssessment));
+      if (a) {
+        openReportView(a);
       }
     });
   });
@@ -347,6 +369,147 @@ assessmentForm?.addEventListener("submit", async (e) => {
   } catch (err) {
     assessmentFormError.textContent = err.message || "Could not save assessment.";
   }
+});
+
+// AI-drafted report review — field ids use dot notation into the nested
+// report shape returned by server/assessmentReport.js (background/evaluation
+// are plain strings; materials/goals/recommendations.* are arrays, edited
+// here as one-item-per-line text so a therapist never has to touch JSON).
+const REPORT_FIELD_MAP = [
+  { id: "background", label: "Background", type: "text" },
+  { id: "evaluation", label: "Evaluation", type: "text" },
+  { id: "materials", label: "Materials (one per line)", type: "lines" },
+  { id: "clinicalFindings.voiceFluencyOralMotor", label: "Voice, Fluency and Oral-Motor", type: "text" },
+  { id: "clinicalFindings.language", label: "Language", type: "text" },
+  {
+    id: "clinicalFindings.pragmaticSocialPlay",
+    label: "Pragmatic (Social) Language and Play Skills",
+    type: "text",
+  },
+  { id: "clinicalFindings.regulation", label: "Regulation", type: "text" },
+  { id: "recommendations.home", label: "Suggestions at home (one per line)", type: "lines" },
+  {
+    id: "recommendations.therapy",
+    label: "Suggestions for therapy and collaboration (one per line)",
+    type: "lines",
+  },
+  { id: "goals", label: "Goals (one per line)", type: "lines" },
+];
+
+let currentReportAssessmentId = null;
+
+function getPath(obj, path) {
+  return path.split(".").reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
+}
+
+function setPath(obj, path, value) {
+  const keys = path.split(".");
+  let cur = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    cur[keys[i]] = cur[keys[i]] || {};
+    cur = cur[keys[i]];
+  }
+  cur[keys[keys.length - 1]] = value;
+}
+
+function renderReportFields(report) {
+  assessmentReportFieldsEl.innerHTML = REPORT_FIELD_MAP.map((f) => {
+    const raw = getPath(report, f.id);
+    const value = f.type === "lines" ? (Array.isArray(raw) ? raw.join("\n") : "") : raw || "";
+    const rows = f.type === "lines" ? 4 : 3;
+    return `<label class="field field-full"><span>${escapeHtml(f.label)}</span><textarea id="rf-${f.id}" rows="${rows}">${escapeHtml(value)}</textarea></label>`;
+  }).join("");
+}
+
+function collectReportFields() {
+  const report = {};
+  REPORT_FIELD_MAP.forEach((f) => {
+    const el = document.getElementById(`rf-${f.id}`);
+    if (!el) {
+      return;
+    }
+    const value =
+      f.type === "lines"
+        ? el.value
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : el.value.trim();
+    setPath(report, f.id, value);
+  });
+  return report;
+}
+
+function showReportView() {
+  assessmentsListView.classList.add("hidden");
+  assessmentsFormView.classList.add("hidden");
+  assessmentsReportView.classList.remove("hidden");
+}
+
+async function generateReportForCurrent() {
+  assessmentReportError.textContent = "";
+  assessmentReportFieldsEl.classList.add("hidden");
+  assessmentReportActions.classList.add("hidden");
+  assessmentReportLoading.classList.remove("hidden");
+
+  try {
+    const res = await apiFetch(`/api/therapist/assessments/${currentReportAssessmentId}/generate-report`, {
+      method: "POST",
+    });
+    const updated = res.data;
+    const idx = allAssessments.findIndex((a) => a.id === updated.id);
+    if (idx >= 0) {
+      allAssessments[idx] = updated;
+    }
+    renderReportFields(updated.report);
+    assessmentReportFieldsEl.classList.remove("hidden");
+    assessmentReportActions.classList.remove("hidden");
+  } catch (err) {
+    assessmentReportError.textContent = err.message || "Could not generate report.";
+  } finally {
+    assessmentReportLoading.classList.add("hidden");
+  }
+}
+
+async function openReportView(assessment) {
+  currentReportAssessmentId = assessment.id;
+  assessmentReportTitle.textContent = `Report — ${assessment.client_name}`;
+  assessmentReportError.textContent = "";
+  showReportView();
+
+  if (assessment.report) {
+    renderReportFields(assessment.report);
+    assessmentReportFieldsEl.classList.remove("hidden");
+    assessmentReportActions.classList.remove("hidden");
+    assessmentReportLoading.classList.add("hidden");
+  } else {
+    await generateReportForCurrent();
+  }
+}
+
+assessmentReportBackBtn?.addEventListener("click", showAssessmentList);
+assessmentReportRegenerateBtn?.addEventListener("click", generateReportForCurrent);
+
+assessmentReportSaveBtn?.addEventListener("click", async () => {
+  assessmentReportError.textContent = "";
+  const report = collectReportFields();
+  try {
+    const res = await apiFetch(`/api/therapist/assessments/${currentReportAssessmentId}/report`, {
+      method: "PATCH",
+      body: JSON.stringify(report),
+    });
+    const idx = allAssessments.findIndex((a) => a.id === res.data.id);
+    if (idx >= 0) {
+      allAssessments[idx] = res.data;
+    }
+    window.alert("Report saved.");
+  } catch (err) {
+    assessmentReportError.textContent = err.message || "Could not save report.";
+  }
+});
+
+assessmentReportPrintBtn?.addEventListener("click", () => {
+  window.open(`report-print.html?id=${currentReportAssessmentId}&role=therapist`, "_blank");
 });
 
 loginForm.addEventListener("submit", async (e) => {

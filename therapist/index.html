@@ -110,6 +110,22 @@
               <p id="assessment-form-error" class="form-error" role="status"></p>
             </form>
           </div>
+
+          <div id="assessments-report-view" class="hidden">
+            <div class="panel-head">
+              <h2 class="section-title admin-section-title" id="assessment-report-title">Report</h2>
+              <button id="assessment-report-back" class="btn-outline btn-sm" type="button">← Back to list</button>
+            </div>
+            <p class="muted panel-intro">AI-drafted from your intake notes — review and edit before printing.</p>
+            <p id="assessment-report-loading" class="muted hidden">Generating report…</p>
+            <div id="assessment-report-fields"></div>
+            <div class="save-actions" id="assessment-report-actions">
+              <button id="assessment-report-regenerate" class="btn-outline btn-sm" type="button">Regenerate</button>
+              <button id="assessment-report-save" class="btn-outline btn-sm" type="button">Save changes</button>
+              <button id="assessment-report-print" class="btn-primary btn-sm" type="button">Print</button>
+            </div>
+            <p id="assessment-report-error" class="form-error" role="status"></p>
+          </div>
         </section>
 
         <section class="admin-panel booking-card" id="therapist-bookings-panel">

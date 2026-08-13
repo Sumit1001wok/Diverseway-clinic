@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Speech and Language Assessment Report | Diverse Way Clinic</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1a1a2e;
+      --muted: #6b7280;
+      --rule: #d8dce3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2.5rem 3rem 4rem;
+      font-family: "DM Sans", sans-serif;
+      color: var(--ink);
+      max-width: 840px;
+      margin-inline: auto;
+      line-height: 1.6;
+    }
+    .print-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1.5rem;
+    }
+    .print-btn {
+      border: 1px solid #ccc;
+      background: #fff;
+      padding: 0.55rem 1.1rem;
+      border-radius: 999px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .letterhead {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--rule);
+    }
+    .letterhead img {
+      height: 56px;
+    }
+    .letterhead h2 {
+      font-family: "Playfair Display", serif;
+      font-size: 1.4rem;
+      margin: 0;
+    }
+    .letterhead p {
+      margin: 0.15rem 0 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    h1.report-title {
+      font-family: "Playfair Display", serif;
+      font-size: 1.35rem;
+      text-align: center;
+      margin: 0 0 1.5rem;
+    }
+    .header-block p {
+      margin: 0.2rem 0;
+      font-size: 0.95rem;
+    }
+    .header-block {
+      margin-bottom: 1.5rem;
+    }
+    h3.r-heading {
+      font-size: 1.05rem;
+      margin: 1.5rem 0 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--rule);
+    }
+    h3.r-heading:first-of-type {
+      border-top: none;
+      padding-top: 0;
+    }
+    h4.r-subheading {
+      font-size: 0.98rem;
+      margin: 0.9rem 0 0.3rem;
+    }
+    .r-text {
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      margin: 0.2rem 0;
+    }
+    ul.r-list, ol.r-list {
+      margin: 0.3rem 0;
+      padding-left: 1.3rem;
+      font-size: 0.95rem;
+    }
+    .signature {
+      margin-top: 2.5rem;
+    }
+    .signature p {
+      margin: 0.15rem 0;
+    }
+    .loading, .error-state {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--muted);
+    }
+    @media print {
+      .print-toolbar { display: none; }
+      body { padding: 0.5in; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" class="print-btn" id="print-btn">Print / Save as PDF</button>
+  </div>
+  <div id="content">
+    <p class="loading">Loading report…</p>
+  </div>
+
+  <script>
+    "use strict";
+
+    function escapeHtml(text) {
+      return String(text ?? "").replace(/[&<>"']/g, (char) => {
+        switch (char) {
+          case "&": return "&amp;";
+          case "<": return "&lt;";
+          case ">": return "&gt;";
+          case '"': return "&quot;";
+          default: return "&#39;";
+        }
+      });
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const role = params.get("role") === "admin" ? "admin" : "therapist";
+    const contentEl = document.getElementById("content");
+
+    document.getElementById("print-btn").addEventListener("click", () => window.print());
+
+    function list(items, ordered) {
+      if (!items || !items.length) {
+        return "";
+      }
+      const tag = ordered ? "ol" : "ul";
+      return `<${tag} class="r-list">${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</${tag}>`;
+    }
+
+    function renderReport(a) {
+      const r = a.report;
+      if (!r) {
+        contentEl.innerHTML = '<p class="error-state">No report has been generated for this assessment yet.</p>';
+        return;
+      }
+
+      contentEl.innerHTML = `
+        <div class="letterhead">
+          <img src="../assets/images/logo.png" alt="Diverse Way Clinic">
+          <div>
+            <h2>Diverse Way Clinic</h2>
+            <p>Shankhamul Town planning, Lalitpur</p>
+            <p>Contact: 9841362404, 9845366417</p>
+          </div>
+        </div>
+        <h1 class="report-title">Speech and Language Assessment Report</h1>
+        <div class="header-block">
+          <p><strong>Name:</strong> ${escapeHtml(a.client_name)}</p>
+          <p><strong>Age/Gender:</strong> ${escapeHtml(a.age_gender || "—")}</p>
+          <p><strong>Address:</strong> ${escapeHtml(a.address || "—")}</p>
+          <p><strong>Informant:</strong> ${escapeHtml(a.informant || "—")}</p>
+          <p><strong>Date of assessment:</strong> ${escapeHtml(a.assessment_date || "—")}</p>
+        </div>
+
+        <h3 class="r-heading">Background</h3>
+        <p class="r-text">${escapeHtml(r.background)}</p>
+
+        <h3 class="r-heading">Evaluation</h3>
+        <p class="r-text">${escapeHtml(r.evaluation)}</p>
+
+        <h3 class="r-heading">Materials</h3>
+        ${list(r.materials, false)}
+
+        <h3 class="r-heading">Clinical Findings</h3>
+        <h4 class="r-subheading">Voice, Fluency and Oral-Motor</h4>
+        <p class="r-text">${escapeHtml(r.clinicalFindings?.voiceFluencyOralMotor)}</p>
+        <h4 class="r-subheading">Language</h4>
+        <p class="r-text">${escapeHtml(r.clinicalFindings?.language)}</p>
+        <h4 class="r-subheading">Pragmatic (Social) Language and Play Skills</h4>
+        <p class="r-text">${escapeHtml(r.clinicalFindings?.pragmaticSocialPlay)}</p>
+        <h4 class="r-subheading">Regulation</h4>
+        <p class="r-text">${escapeHtml(r.clinicalFindings?.regulation)}</p>
+
+        <h3 class="r-heading">Recommendations</h3>
+        <h4 class="r-subheading">Suggestions at home</h4>
+        ${list(r.recommendations?.home, false)}
+        <h4 class="r-subheading">Suggestions for therapy and collaboration</h4>
+        ${list(r.recommendations?.therapy, true)}
+
+        <h3 class="r-heading">Goals</h3>
+        ${list(r.goals, true)}
+
+        <div class="signature">
+          <p>It was a pleasure evaluating ${escapeHtml((a.client_name || "").split(" ")[0] || "the client")}.</p>
+          <p style="margin-top:1.5rem;"><strong>${escapeHtml(a.therapist_name || a.clinician || "")}</strong></p>
+          <p>Speech Language Pathologist</p>
+        </div>
+      `;
+      document.title = `${a.client_name} — Speech and Language Assessment Report`;
+    }
+
+    async function load() {
+      if (!id) {
+        contentEl.innerHTML = '<p class="error-state">No assessment specified.</p>';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/${role}/assessments/${id}`, { credentials: "same-origin" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Could not load this report.");
+        }
+        renderReport(data.data);
+      } catch (err) {
+        contentEl.innerHTML = `<p class="error-state">${escapeHtml(err.message || "Could not load this report.")}</p>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

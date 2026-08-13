@@ -109,6 +109,13 @@ async function migrateBookingPaymentColumns() {
   }
 }
 
+async function migrateAssessmentReportColumns() {
+  await query(`
+    ALTER TABLE assessments ADD COLUMN IF NOT EXISTS report_data TEXT;
+    ALTER TABLE assessments ADD COLUMN IF NOT EXISTS report_generated_at TEXT;
+  `);
+}
+
 async function initSchema() {
   await query(`
     CREATE TABLE IF NOT EXISTS patients (
@@ -297,6 +304,7 @@ async function initSchema() {
 
   await migrateAvailabilityServiceColumn();
   await migrateBookingPaymentColumns();
+  await migrateAssessmentReportColumns();
 
   await query(`
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
@@ -1872,8 +1880,19 @@ function withAssessment(row) {
   if (!row) {
     return null;
   }
-  const { data, ...rest } = row;
-  return { ...rest, ...parseJsonField(data, {}) };
+  const { data, report_data, ...rest } = row;
+  return { ...rest, ...parseJsonField(data, {}), report: parseJsonField(report_data, null) };
+}
+
+async function saveAssessmentReport(id, therapistId, reportData) {
+  await ensureReady();
+  const row = await queryOne(
+    `UPDATE assessments SET report_data = $1, report_generated_at = $2
+     WHERE id = $3 AND therapist_id = $4
+     RETURNING *`,
+    [JSON.stringify(reportData), nowIso(), id, therapistId]
+  );
+  return withAssessment(row);
 }
 
 // Everything except client_name/assessment_date (which stay as real columns
@@ -1910,7 +1929,13 @@ async function listAssessmentsForTherapist(therapistId) {
 
 async function getAssessmentForTherapist(id, therapistId) {
   await ensureReady();
-  const row = await queryOne("SELECT * FROM assessments WHERE id = $1 AND therapist_id = $2", [id, therapistId]);
+  const row = await queryOne(
+    `SELECT assessments.*, therapists.name AS therapist_name
+     FROM assessments
+     JOIN therapists ON therapists.id = assessments.therapist_id
+     WHERE assessments.id = $1 AND assessments.therapist_id = $2`,
+    [id, therapistId]
+  );
   return withAssessment(row);
 }
 
@@ -2072,4 +2097,5 @@ module.exports = {
   deleteAssessment,
   listAssessmentsAdmin,
   getAssessmentAdmin,
+  saveAssessmentReport,
 };

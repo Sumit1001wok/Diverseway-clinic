@@ -15,7 +15,9 @@ const {
   getAssessmentForTherapist,
   updateAssessment,
   deleteAssessment,
+  saveAssessmentReport,
 } = require("../db");
+const { generateReport, isConfigured: isReportGenerationConfigured } = require("../assessmentReport");
 const { requireTherapist, hasValidTherapistSession } = require("../middleware/auth");
 const { asyncHandler } = require("../asyncHandler");
 
@@ -27,6 +29,14 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many login attempts. Please try again later." },
+});
+
+const reportGenerationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many report generation requests. Please try again in a few minutes." },
 });
 
 function trim(value) {
@@ -214,6 +224,43 @@ router.delete(
       return res.status(404).json({ error: "Assessment not found." });
     }
     res.json({ ok: true, id: Number(req.params.id) });
+  })
+);
+
+router.post(
+  "/assessments/:id/generate-report",
+  requireTherapist,
+  reportGenerationLimiter,
+  asyncHandler(async (req, res) => {
+    if (!isReportGenerationConfigured()) {
+      return res.status(503).json({ error: "Report generation isn't available right now." });
+    }
+
+    const assessment = await getAssessmentForTherapist(Number(req.params.id), req.session.therapist.id);
+    if (!assessment) {
+      return res.status(404).json({ error: "Assessment not found." });
+    }
+
+    try {
+      const report = await generateReport(assessment);
+      const updated = await saveAssessmentReport(assessment.id, req.session.therapist.id, report);
+      res.json({ ok: true, data: updated });
+    } catch (err) {
+      console.error("Report generation error:", err.message);
+      res.status(502).json({ error: "Could not generate the report right now. Please try again." });
+    }
+  })
+);
+
+router.patch(
+  "/assessments/:id/report",
+  requireTherapist,
+  asyncHandler(async (req, res) => {
+    const updated = await saveAssessmentReport(Number(req.params.id), req.session.therapist.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: "Assessment not found." });
+    }
+    res.json({ ok: true, data: updated });
   })
 );
 
