@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Diverse Way Clinic",
+    "slug": "diverse-way-clinic",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "diversewayclinic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f5fbfc"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.diversewayclinic.app"
+    },
+    "android": {
+      "package": "com.diversewayclinic.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#f5fbfc",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
