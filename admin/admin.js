@@ -49,6 +49,14 @@ const screeningModal = document.getElementById("screening-modal");
 const screeningModalEyebrow = document.getElementById("screening-modal-eyebrow");
 const screeningModalDetails = document.getElementById("screening-modal-details");
 const screeningModalDeleteBtn = document.getElementById("screening-modal-delete");
+const therapistForm = document.getElementById("therapist-form");
+const therapistNameInput = document.getElementById("therapist-name");
+const therapistEmailInput = document.getElementById("therapist-email");
+const therapistServiceSelect = document.getElementById("therapist-service");
+const therapistPasswordInput = document.getElementById("therapist-password");
+const therapistFormError = document.getElementById("therapist-form-error");
+const therapistsBody = document.getElementById("therapists-body");
+const refreshTherapistsBtn = document.getElementById("refresh-therapists");
 
 const WHATSAPP_PHONE = "9779845366417";
 // STATUS_LABELS, TIER_LABELS, escapeHtml, formatDate, statusBadge, and
@@ -64,6 +72,7 @@ const contentData = { services: [], team: [], testimonials: [], blog: [] };
 let activeContentEntity = null;
 let activeContentId = null;
 let allScreenings = [];
+let allTherapists = [];
 let activeScreeningId = null;
 
 function formatShortDate(value) {
@@ -391,7 +400,7 @@ async function loadDashboard() {
   renderBookingTable();
   renderMessages(allMessages);
   await loadAvailability();
-  await Promise.all([loadAllContent(), loadSettings(), loadScreenings()]);
+  await Promise.all([loadAllContent(), loadSettings(), loadScreenings(), loadTherapists()]);
 }
 
 function renderScreenings() {
@@ -425,6 +434,111 @@ async function loadScreenings() {
   allScreenings = res.data;
   renderScreenings();
 }
+
+function renderTherapists() {
+  if (!allTherapists.length) {
+    therapistsBody.innerHTML = '<tr><td colspan="5" class="empty">No therapists added yet.</td></tr>';
+    return;
+  }
+
+  therapistsBody.innerHTML = allTherapists
+    .map(
+      (row) => `
+    <tr>
+      <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(row.email)}</td>
+      <td>${escapeHtml(row.service)}</td>
+      <td>${row.is_active ? "Yes" : "No"}</td>
+      <td class="therapist-row-actions">
+        <button type="button" class="btn-outline btn-sm" data-reset-therapist="${row.id}">Reset password</button>
+        <button type="button" class="btn-outline btn-sm" data-toggle-therapist="${row.id}">${row.is_active ? "Deactivate" : "Reactivate"}</button>
+        <button type="button" class="btn-danger btn-sm" data-delete-therapist="${row.id}">Delete</button>
+      </td>
+    </tr>`
+    )
+    .join("");
+
+  document.querySelectorAll("[data-reset-therapist]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.dataset.resetTherapist);
+      const password = window.prompt("Enter a new password for this therapist (at least 8 characters):");
+      if (!password) {
+        return;
+      }
+      if (password.length < 8) {
+        window.alert("Password must be at least 8 characters.");
+        return;
+      }
+      try {
+        await apiFetch(`/api/admin/therapists/${id}`, { method: "PATCH", body: JSON.stringify({ password }) });
+        window.alert("Password updated.");
+      } catch (err) {
+        window.alert(err.message || "Could not update password.");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-toggle-therapist]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.dataset.toggleTherapist);
+      const row = allTherapists.find((t) => t.id === id);
+      if (!row) return;
+      try {
+        await apiFetch(`/api/admin/therapists/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ is_active: !row.is_active }),
+        });
+        await loadTherapists();
+      } catch (err) {
+        window.alert(err.message || "Could not update therapist.");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-delete-therapist]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!window.confirm("Delete this therapist? They will no longer be able to sign in.")) {
+        return;
+      }
+      const id = Number(btn.dataset.deleteTherapist);
+      try {
+        await apiFetch(`/api/admin/therapists/${id}`, { method: "DELETE" });
+        await loadTherapists();
+      } catch (err) {
+        window.alert(err.message || "Could not delete therapist.");
+      }
+    });
+  });
+}
+
+async function loadTherapists() {
+  const res = await apiFetch("/api/admin/therapists");
+  allTherapists = res.data;
+  renderTherapists();
+}
+
+therapistForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  therapistFormError.textContent = "";
+
+  try {
+    await apiFetch("/api/admin/therapists", {
+      method: "POST",
+      body: JSON.stringify({
+        name: therapistNameInput.value.trim(),
+        email: therapistEmailInput.value.trim(),
+        service: therapistServiceSelect.value,
+        password: therapistPasswordInput.value,
+      }),
+    });
+    therapistForm.reset();
+    await loadTherapists();
+  } catch (err) {
+    therapistFormError.textContent = err.message || "Could not add therapist.";
+  }
+});
+
+refreshTherapistsBtn?.addEventListener("click", loadTherapists);
 
 function openScreeningModal(id) {
   const row = allScreenings.find((r) => r.id === id);

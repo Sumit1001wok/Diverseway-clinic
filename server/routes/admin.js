@@ -41,6 +41,12 @@ const {
   listScreeningSubmissions,
   updateScreeningSubmissionReviewed,
   deleteScreeningSubmission,
+  SERVICE_DURATIONS,
+  listTherapists,
+  createTherapist,
+  getTherapistByEmail,
+  updateTherapist,
+  deleteTherapist,
 } = require("../db");
 const { requireAdmin, hasValidSession, verifyAdminLogin } = require("../middleware/auth");
 const { asyncHandler } = require("../asyncHandler");
@@ -299,7 +305,7 @@ router.patch(
     const id = Number(req.params.id);
     const status = String(req.body.status || "").trim();
 
-    const allowed = ["pending", "confirmed", "cancelled", "completed"];
+    const allowed = ["pending", "confirmed", "cancelled", "completed", "no_show"];
     if (!allowed.includes(status)) {
       return res.status(400).json({ error: "Invalid status." });
     }
@@ -455,6 +461,81 @@ router.delete(
     const id = Number(req.params.id);
     if (!(await deleteTeamMember(id))) {
       return res.status(404).json({ error: "Team member not found." });
+    }
+    res.json({ ok: true, id });
+  })
+);
+
+router.get(
+  "/therapists",
+  asyncHandler(async (_req, res) => {
+    res.json({ data: await listTherapists() });
+  })
+);
+
+router.post(
+  "/therapists",
+  asyncHandler(async (req, res) => {
+    const name = String(req.body.name || "").trim();
+    const email = String(req.body.email || "").trim();
+    const service = String(req.body.service || "").trim();
+    const password = String(req.body.password || "");
+
+    if (!name || !email || !service || !password) {
+      return res.status(400).json({ error: "Name, email, service, and password are required." });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+    if (!Object.keys(SERVICE_DURATIONS).includes(service)) {
+      return res.status(400).json({ error: "Invalid service." });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters." });
+    }
+    if (await getTherapistByEmail(email)) {
+      return res.status(409).json({ error: "A therapist with this email already exists." });
+    }
+
+    const therapist = await createTherapist({ name, email, service, password });
+    res.status(201).json({ ok: true, data: therapist });
+  })
+);
+
+router.patch(
+  "/therapists/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const payload = {};
+    if (req.body.name !== undefined) payload.name = req.body.name;
+    if (req.body.service !== undefined) {
+      if (!Object.keys(SERVICE_DURATIONS).includes(String(req.body.service).trim())) {
+        return res.status(400).json({ error: "Invalid service." });
+      }
+      payload.service = req.body.service;
+    }
+    if (req.body.is_active !== undefined) payload.is_active = req.body.is_active;
+    if (req.body.password !== undefined) {
+      if (String(req.body.password).length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters." });
+      }
+      payload.password = req.body.password;
+    }
+
+    const therapist = await updateTherapist(id, payload);
+    if (!therapist) {
+      return res.status(404).json({ error: "Therapist not found." });
+    }
+    res.json({ ok: true, data: therapist });
+  })
+);
+
+router.delete(
+  "/therapists/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!(await deleteTherapist(id))) {
+      return res.status(404).json({ error: "Therapist not found." });
     }
     res.json({ ok: true, id });
   })

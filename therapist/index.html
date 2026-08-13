@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Therapist | Diverse Way Clinic</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../admin/admin.css">
+</head>
+<body class="admin-page page-ready">
+  <header class="site-header admin-site-header">
+    <nav class="navbar container">
+      <a class="brand" href="../index.html" aria-label="Diverse Way Clinic home">
+        <img class="brand-logo-img" src="../assets/images/logo.png" width="220" height="70" alt="" loading="eager" decoding="async">
+        <span class="brand-name">Diverse Way Clinic</span>
+      </a>
+      <div class="admin-header-actions">
+        <span class="admin-header-badge">Therapist portal</span>
+        <button id="logout-btn" class="btn-outline btn-sm hidden" type="button">Sign out</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="admin-main">
+    <div id="login-screen" class="admin-login">
+      <div class="admin-login-wrap container">
+        <form id="login-form" class="admin-login-card booking-card">
+          <p class="hero-eyebrow admin-login-badge">Therapist sign in</p>
+          <h1 class="section-title admin-login-title">Therapist Portal</h1>
+          <p class="muted">Sign in with the email and password the clinic gave you.</p>
+          <label class="field">
+            <span>Email</span>
+            <input id="therapist-email-input" name="email" type="email" autocomplete="username" required>
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input id="therapist-password-input" name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button class="btn-primary btn-primary-large admin-login-submit" type="submit">Sign in</button>
+          <p id="login-error" class="form-error" role="status"></p>
+        </form>
+      </div>
+    </div>
+
+    <div id="dashboard" class="admin-dashboard hidden">
+      <section class="admin-hero">
+        <div class="container admin-hero-content">
+          <p class="hero-eyebrow">Therapist dashboard</p>
+          <h1 class="section-title">Your appointments</h1>
+          <p class="muted">Signed in as <strong id="therapist-user">—</strong> · <span id="therapist-service-label">—</span></p>
+        </div>
+      </section>
+
+      <div class="container admin-dashboard-inner">
+        <section class="admin-panel booking-card" id="therapist-bookings-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Bookings</h2>
+            <button id="refresh-bookings" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+          <p class="muted panel-intro">All bookings for your therapy, most recent first.</p>
+
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Ref</th>
+                  <th>Submitted</th>
+                  <th>Contact</th>
+                  <th>Patient</th>
+                  <th>Preferred / Confirmed</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="bookings-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/dashboard-utils.js"></script>
+  <script src="therapist.js"></script>
+  <script src="../js/chatbot.js"></script>
+</body>
+</html>

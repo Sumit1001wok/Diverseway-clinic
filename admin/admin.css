@@ -393,6 +393,12 @@ code {
   transform: translateY(-1px);
 }
 
+.therapist-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 /* Modal */
 .modal {
   position: fixed;

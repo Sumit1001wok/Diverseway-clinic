@@ -57,6 +57,7 @@
           <nav class="admin-quicknav" aria-label="Jump to section">
             <a href="#availability-panel">Availability</a>
             <a href="#bookings-panel">Bookings</a>
+            <a href="#therapists-panel">Therapists</a>
             <a href="#messages-panel">Messages</a>
             <a href="#screenings-panel">Screenings</a>
             <a href="#services-panel">Services</a>
@@ -124,6 +125,7 @@
               <button type="button" class="filter-tab" data-status="pending">Pending</button>
               <button type="button" class="filter-tab" data-status="confirmed">Confirmed</button>
               <button type="button" class="filter-tab" data-status="completed">Completed</button>
+              <button type="button" class="filter-tab" data-status="no_show">No-show</button>
               <button type="button" class="filter-tab" data-status="cancelled">Cancelled</button>
             </div>
             <label class="search-field">
@@ -149,6 +151,55 @@
                 </tr>
               </thead>
               <tbody id="bookings-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-panel booking-card" id="therapists-panel">
+          <div class="panel-head">
+            <h2 class="section-title admin-section-title">Therapists</h2>
+            <button id="refresh-therapists" class="btn-outline btn-sm" type="button">Refresh</button>
+          </div>
+          <p class="muted panel-intro">Create a login for each therapist. They sign in at <code>/therapist</code> and see bookings for the therapy you assign them.</p>
+
+          <form id="therapist-form" class="availability-toolbar">
+            <label class="field">
+              <span>Name</span>
+              <input id="therapist-name" type="text" required>
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input id="therapist-email" type="email" required>
+            </label>
+            <label class="field">
+              <span>Therapy</span>
+              <select id="therapist-service">
+                <option value="Consultation">Consultation</option>
+                <option value="Speech Therapy">Speech Therapy</option>
+                <option value="Occupational Therapy">Occupational Therapy</option>
+                <option value="Behaviour Therapy">Behaviour Therapy</option>
+                <option value="Psychological Counselling">Psychological Counselling</option>
+                <option value="Voice Therapy">Voice Therapy</option>
+                <option value="Special Education Support">Special Education Support</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Initial password</span>
+              <input id="therapist-password" type="text" minlength="8" required placeholder="At least 8 characters">
+            </label>
+            <div class="availability-actions">
+              <button class="btn-primary btn-sm" type="submit">Add therapist</button>
+            </div>
+          </form>
+          <p id="therapist-form-error" class="form-error" role="status"></p>
+
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Therapy</th><th>Active</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="therapists-body"></tbody>
             </table>
           </div>
         </section>
@@ -313,6 +364,7 @@
                 <option value="pending">Pending</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="completed">Completed</option>
+                <option value="no_show">No-show</option>
                 <option value="cancelled">Cancelled</option>
               </select>
             </label>

@@ -66,6 +66,18 @@ function requirePatient(req, res, next) {
   return res.status(401).json({ error: "Please sign in to continue." });
 }
 
+function hasValidTherapistSession(req) {
+  return Boolean(req.session && req.session.therapist && req.session.therapist.id);
+}
+
+function requireTherapist(req, res, next) {
+  if (hasValidTherapistSession(req)) {
+    return next();
+  }
+
+  return res.status(401).json({ error: "Please sign in to continue." });
+}
+
 module.exports = {
   requireAdmin,
   hasValidSession,
@@ -73,4 +85,6 @@ module.exports = {
   getAdminCredentials,
   hasValidPatientSession,
   requirePatient,
+  hasValidTherapistSession,
+  requireTherapist,
 };

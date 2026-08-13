@@ -246,6 +246,17 @@ async function initSchema() {
       updated_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS therapists (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      service TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS screening_submissions (
       id SERIAL PRIMARY KEY,
       category TEXT NOT NULL,
@@ -282,6 +293,8 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_screening_created_at ON screening_submissions(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_screening_patient ON screening_submissions(patient_id);
     CREATE INDEX IF NOT EXISTS idx_patients_email ON patients(email);
+    CREATE INDEX IF NOT EXISTS idx_therapists_email ON therapists(email);
+    CREATE INDEX IF NOT EXISTS idx_therapists_service ON therapists(service);
   `);
 }
 
@@ -1001,6 +1014,7 @@ async function listBookings(filters = {}) {
   await ensureReady();
   const status = filters.status && filters.status !== "all" ? filters.status : null;
   const search = filters.search ? String(filters.search).trim() : "";
+  const service = filters.service ? String(filters.service).trim() : "";
 
   let sql = "SELECT * FROM bookings WHERE 1=1";
   const params = [];
@@ -1008,6 +1022,11 @@ async function listBookings(filters = {}) {
   if (status) {
     params.push(status);
     sql += ` AND status = $${params.length}`;
+  }
+
+  if (service) {
+    params.push(service);
+    sql += ` AND service = $${params.length}`;
   }
 
   if (search) {
@@ -1038,7 +1057,7 @@ async function updateBooking(id, payload) {
     return null;
   }
 
-  const allowedStatuses = ["pending", "confirmed", "cancelled", "completed"];
+  const allowedStatuses = ["pending", "confirmed", "cancelled", "completed", "no_show"];
   const status = payload.status !== undefined ? String(payload.status).trim() : existing.status;
 
   if (!allowedStatuses.includes(status)) {
@@ -1629,6 +1648,89 @@ async function verifyPatientPassword(email, password) {
   return withoutPasswordHash(patient);
 }
 
+function withoutTherapistPasswordHash(therapist) {
+  if (!therapist) {
+    return null;
+  }
+  const { password_hash, ...safe } = therapist;
+  return safe;
+}
+
+async function createTherapist({ name, email, service, password }) {
+  await ensureReady();
+  const now = nowIso();
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  const row = await queryOne(
+    `INSERT INTO therapists (name, email, password_hash, service, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [name, email.toLowerCase(), passwordHash, service, now, now]
+  );
+
+  return withoutTherapistPasswordHash(row);
+}
+
+async function getTherapistByEmail(email) {
+  await ensureReady();
+  return queryOne("SELECT * FROM therapists WHERE email = $1", [String(email || "").toLowerCase()]);
+}
+
+async function getTherapistById(id) {
+  await ensureReady();
+  return withoutTherapistPasswordHash(await queryOne("SELECT * FROM therapists WHERE id = $1", [id]));
+}
+
+async function verifyTherapistPassword(email, password) {
+  const therapist = await getTherapistByEmail(email);
+  if (!therapist || !therapist.is_active) {
+    return null;
+  }
+  if (!bcrypt.compareSync(password, therapist.password_hash)) {
+    return null;
+  }
+  return withoutTherapistPasswordHash(therapist);
+}
+
+async function listTherapists() {
+  await ensureReady();
+  const rows = await queryAll("SELECT * FROM therapists ORDER BY name ASC");
+  return rows.map(withoutTherapistPasswordHash);
+}
+
+async function updateTherapist(id, payload) {
+  await ensureReady();
+  const existing = await queryOne("SELECT * FROM therapists WHERE id = $1", [id]);
+  if (!existing) {
+    return null;
+  }
+
+  const name = payload.name !== undefined ? String(payload.name).trim() || existing.name : existing.name;
+  const service = payload.service !== undefined ? String(payload.service).trim() || existing.service : existing.service;
+  const is_active =
+    payload.is_active !== undefined ? (payload.is_active ? 1 : 0) : existing.is_active;
+  const passwordHash =
+    payload.password !== undefined && payload.password
+      ? bcrypt.hashSync(payload.password, 10)
+      : existing.password_hash;
+
+  const row = await queryOne(
+    `UPDATE therapists SET
+       name = $1, service = $2, is_active = $3, password_hash = $4, updated_at = $5
+     WHERE id = $6
+     RETURNING *`,
+    [name, service, is_active, passwordHash, nowIso(), id]
+  );
+
+  return withoutTherapistPasswordHash(row);
+}
+
+async function deleteTherapist(id) {
+  await ensureReady();
+  const result = await query("DELETE FROM therapists WHERE id = $1", [id]);
+  return result.rowCount > 0;
+}
+
 async function listBookingsForPatient(patientId) {
   await ensureReady();
   return queryAll("SELECT * FROM bookings WHERE patient_id = $1 ORDER BY created_at DESC, id DESC", [patientId]);
@@ -1707,4 +1809,11 @@ module.exports = {
   verifyPatientPassword,
   listBookingsForPatient,
   listScreeningSubmissionsForPatient,
+  createTherapist,
+  getTherapistByEmail,
+  getTherapistById,
+  verifyTherapistPassword,
+  listTherapists,
+  updateTherapist,
+  deleteTherapist,
 };

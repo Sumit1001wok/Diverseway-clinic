@@ -19,6 +19,7 @@ const { asyncHandler } = require("./asyncHandler");
 const apiRoutes = require("./routes/api");
 const adminRoutes = require("./routes/admin");
 const authRoutes = require("./routes/auth");
+const therapistRoutes = require("./routes/therapist");
 const chatRoutes = require("./routes/chat");
 const { productionMiddleware } = require("./middleware/production");
 
@@ -115,6 +116,7 @@ app.get("/", (_req, res) => {
 // own, more generous authedApiLimiter instead of no limit at all.
 app.use("/api/admin", authedApiLimiter, adminRoutes);
 app.use("/api/auth", authedApiLimiter, authRoutes);
+app.use("/api/therapist", authedApiLimiter, therapistRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api", formLimiter, apiRoutes);
 
@@ -144,6 +146,14 @@ app.get("/admin", (_req, res) => {
 
 app.get("/admin/login", (_req, res) => {
   res.sendFile(path.join(rootDir, "admin", "index.html"));
+});
+
+app.get("/therapist", (_req, res) => {
+  res.sendFile(path.join(rootDir, "therapist", "index.html"));
+});
+
+app.get("/therapist/login", (_req, res) => {
+  res.sendFile(path.join(rootDir, "therapist", "index.html"));
 });
 
 app.get("*", (req, res, next) => {

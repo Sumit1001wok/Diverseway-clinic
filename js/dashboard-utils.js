@@ -9,6 +9,7 @@ const STATUS_LABELS = {
   confirmed: "Confirmed",
   completed: "Completed",
   cancelled: "Cancelled",
+  no_show: "No-show",
 };
 
 const TIER_LABELS = {

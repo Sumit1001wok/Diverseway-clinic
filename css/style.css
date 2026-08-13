@@ -3170,6 +3170,11 @@ main {
   color: #b91c1c;
 }
 
+.status-no_show {
+  background: rgba(107, 114, 128, 0.16);
+  color: #4b5563;
+}
+
 @media (max-width: 640px) {
   .account-auth-card {
     padding: 1.5rem;
